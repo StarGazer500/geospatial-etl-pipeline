@@ -1,6 +1,6 @@
 # ETL Pipeline
 
-A geospatial ETL (Extract, Transform, Load) pipeline for migrating PostGIS data from Group Planning to Chameleon Geospatial databases. Runs asynchronously with async parallel processing, savepoint progress tracking, and automatic geometry validation.
+A geospatial ETL (Extract, Transform, Load) pipeline for transforming PostGIS data from Raw  to Transforned and Cleaned data. Runs asynchronously with async parallel processing, savepoint progress tracking, and automatic geometry validation.
 
 ## Project Structure
 
@@ -33,17 +33,51 @@ The pipeline processes three schemas, each with a different subset of layers:
 | assigned_psps        | x       | x       | x       |
 | completed_psps       | x       | x       | x       |
 
-## Setup
-
-### Requirements
+## Prerequisites
 
 - Python 3.10+
 - PostgreSQL with PostGIS extension
-- Required packages: `asyncpg`, `psycopg2-binary`, `sqlalchemy`, `geopandas`, `pandas`, `diskcache`
+- VS Code (recommended)
 
-### Environment Variables
+## Setup
 
-Create a `.env` file or set the following environment variables:
+### 1. Clone the Repository
+
+```bash
+git clone <repository-url>
+cd etl_pipeline
+```
+
+### 2. Create a Virtual Environment
+
+```bash
+python -m venv etl_env
+```
+
+Activate the virtual environment:
+
+- **Windows (Command Prompt):**
+  ```cmd
+  etl_env\Scripts\activate
+  ```
+- **Windows (PowerShell):**
+  ```powershell
+  etl_env\Scripts\Activate.ps1
+  ```
+- **Linux/macOS:**
+  ```bash
+  source etl_env/bin/activate
+  ```
+
+### 3. Install Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 4. Configure Environment Variables
+
+Create a `.env` file in the project root with your database credentials:
 
 ```
 # Source database (read from)
@@ -61,17 +95,32 @@ TARGET_USERNAME=
 TARGET_PASSWORD=
 ```
 
-## Usage
+## Running in VS Code
 
-Open `notebook/etl_pipeline.ipynb` and run the cells:
+### Install Required Extensions
 
-1. **Connect** to source and target databases
-2. **Validate** schemas (checks layer names and column names against requirements)
-3. **Run ETL** for all three schemas in parallel
+Open VS Code and install the following extensions (from the Extensions tab `Ctrl+Shift+X`):
+
+1. **Python** (`ms-python.python`) — Python language support
+2. **Jupyter** (`ms-toolsai.jupyter`) — Jupyter notebook support
+
+### Select the Python Interpreter
+
+1. Open the Command Palette with `Ctrl+Shift+P`
+2. Type **"Python: Select Interpreter"** and select it
+3. Choose the `etl_env` virtual environment from the list (it will show as `./etl_env/Scripts/python.exe` on Windows)
+
+### Run the Notebook
+
+1. Open `notebook/etl_pipeline.ipynb` in VS Code
+2. VS Code will render it as an interactive notebook
+3. Make sure the kernel (top right of the notebook) is set to `etl_env`
+4. Set `CLEAR_CACHE = True` in the second cell if you want a fresh run, or leave it as `False` to resume from the last savepoint
+5. Click **"Run All"** at the top of the notebook, or run cells individually by clicking the play button next to each cell
 
 ### Progress Tracking
 
-The pipeline uses disk-based caching to track which layers have been loaded. On re-run, already-loaded layers are skipped. To force a fresh run:
+The pipeline uses disk-based caching (`cache_dir/`) to track which layers have been loaded. On re-run, already-loaded layers are skipped automatically. To force a fresh run, set `CLEAR_CACHE = True` in the notebook or call:
 
 ```python
 await SavePoints.clear_all_progress(is_clear_cache=True)

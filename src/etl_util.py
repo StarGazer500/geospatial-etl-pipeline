@@ -20,7 +20,7 @@ class Extract_Transform_Load:
           query=f"""
           SELECT
             lease_id,
-            ST_Union(geom) as geom,
+            ST_Multi(ST_CollectionExtract(ST_Union(geom), 3)) as geom,
             MAX(geom_status) as geom_status,
             MAX(lease_status) as lease_status,
             MIN(year_leased) as year_leased,
@@ -87,7 +87,7 @@ class Extract_Transform_Load:
           query=f"""
           SELECT
             compartment_id,
-            ST_Union(geom) as geom,
+            ST_Multi(ST_CollectionExtract(ST_Union(geom), 3)) as geom,
             MAX(lease_id) as lease_id,
             SUM(area_ha) as area_ha,
             MAX(n_psp_target) as n_psp_target,
@@ -150,10 +150,10 @@ class Extract_Transform_Load:
           query = None
 
           if schema == 'buffalo_schema':
-            query = f""" 
-              SELECT 
+            query = f"""
+              SELECT
                 subcompartment_id,
-                ST_Union(geom) as geom,
+                ST_Multi(ST_CollectionExtract(ST_Union(geom), 3)) as geom,
                 SUM(area_ha) as area_ha,
                 MAX(compartment_id) AS compartment_id,
                 MAX(treatment_type) AS treatment_type,
