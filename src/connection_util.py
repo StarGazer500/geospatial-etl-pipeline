@@ -34,6 +34,8 @@ class DatabaseConnection:
             f'postgresql+asyncpg://{connection_base}',
             echo=False,
             pool_pre_ping=True,
+            pool_size=20,
+            max_overflow=10,
         )
 
         # Test connection
@@ -41,7 +43,11 @@ class DatabaseConnection:
             await conn.execute(text("SELECT 1"))
 
         # Sync engine for writes (psycopg2)
-        sync_engine = create_engine(f'postgresql://{connection_base}')
+        sync_engine = create_engine(
+            f'postgresql://{connection_base}',
+            pool_size=20,
+            max_overflow=10,
+        )
 
         return {'async': async_engine, 'sync': sync_engine}
     
