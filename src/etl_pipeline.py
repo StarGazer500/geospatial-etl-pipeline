@@ -1,49 +1,59 @@
-import asyncio
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from etl_util import Extract_Transform_Load
 
 
-
-
-async def run_etl_pipeline(schema,source_conn,target_conn):
+def run_etl_pipeline(schema, source_conn, target_conn):
     try:
         # Akwaaba has all the layers
-        if schema=='akwaaba_schema':
-            await asyncio.gather(
-                Extract_Transform_Load.load_leased_areas(schema=schema,source_conn=source_conn,target_conn=target_conn),
-                Extract_Transform_Load.load_compartments(schema=schema,source_conn=source_conn,target_conn=target_conn),
-                Extract_Transform_Load.load_subcompartments(schema=schema,source_conn=source_conn,target_conn=target_conn),
-                Extract_Transform_Load.load_unplantable_areas(schema=schema,source_conn=source_conn,target_conn=target_conn),
-                Extract_Transform_Load.load_field_mapped_farms(schema=schema,source_conn=source_conn,target_conn=target_conn),
-                Extract_Transform_Load.load_intercropped_farms(schema=schema,source_conn=source_conn,target_conn=target_conn),
-                Extract_Transform_Load.load_rb_roads(schema=schema,source_conn=source_conn,target_conn=target_conn),
-                Extract_Transform_Load.load_rb_assigned_psps(schema=schema,source_conn=source_conn,target_conn=target_conn),
-                Extract_Transform_Load.load_rb_completed_psps(schema=schema,source_conn=source_conn,target_conn=target_conn)
-            )
+        if schema == 'akwaaba_schema':
+            layers = [
+                Extract_Transform_Load.load_leased_areas,
+                Extract_Transform_Load.load_compartments,
+                Extract_Transform_Load.load_subcompartments,
+                Extract_Transform_Load.load_unplantable_areas,
+                Extract_Transform_Load.load_field_mapped_farms,
+                Extract_Transform_Load.load_intercropped_farms,
+                Extract_Transform_Load.load_rb_roads,
+                Extract_Transform_Load.load_rb_assigned_psps,
+                Extract_Transform_Load.load_rb_completed_psps,
+            ]
 
-        # Buffalo currently does not have farm mapped farms and intercropped farms
-        elif schema =='buffalo_schema':
-            await asyncio.gather(
-                Extract_Transform_Load.load_leased_areas(schema=schema,source_conn=source_conn,target_conn=target_conn),
-                Extract_Transform_Load.load_compartments(schema=schema,source_conn=source_conn,target_conn=target_conn),
-                Extract_Transform_Load.load_subcompartments(schema=schema,source_conn=source_conn,target_conn=target_conn),
-                Extract_Transform_Load.load_unplantable_areas(schema=schema,source_conn=source_conn,target_conn=target_conn),
-                Extract_Transform_Load.load_rb_roads(schema=schema,source_conn=source_conn,target_conn=target_conn),
-                Extract_Transform_Load.load_rb_assigned_psps(schema=schema,source_conn=source_conn,target_conn=target_conn),
-                Extract_Transform_Load.load_rb_completed_psps(schema=schema,source_conn=source_conn,target_conn=target_conn)
-            )
+        # Buffalo currently does not have field mapped farms and intercropped farms
+        elif schema == 'buffalo_schema':
+            layers = [
+                Extract_Transform_Load.load_leased_areas,
+                Extract_Transform_Load.load_compartments,
+                Extract_Transform_Load.load_subcompartments,
+                Extract_Transform_Load.load_unplantable_areas,
+                Extract_Transform_Load.load_rb_roads,
+                Extract_Transform_Load.load_rb_assigned_psps,
+                Extract_Transform_Load.load_rb_completed_psps,
+            ]
 
-        # Colobus currently does not have intercroppted areas
+        # Colobus currently does not have intercropped areas
         elif schema == 'colobus_schema':
-            await asyncio.gather(
-                Extract_Transform_Load.load_leased_areas(schema=schema,source_conn=source_conn,target_conn=target_conn),
-                Extract_Transform_Load.load_compartments(schema=schema,source_conn=source_conn,target_conn=target_conn),
-                Extract_Transform_Load.load_subcompartments(schema=schema,source_conn=source_conn,target_conn=target_conn),
-                Extract_Transform_Load.load_unplantable_areas(schema=schema,source_conn=source_conn,target_conn=target_conn),
-                Extract_Transform_Load.load_field_mapped_farms(schema=schema,source_conn=source_conn,target_conn=target_conn),
-                Extract_Transform_Load.load_rb_roads(schema=schema,source_conn=source_conn,target_conn=target_conn),
-                Extract_Transform_Load.load_rb_assigned_psps(schema=schema,source_conn=source_conn,target_conn=target_conn),
-                Extract_Transform_Load.load_rb_completed_psps(schema=schema,source_conn=source_conn,target_conn=target_conn)
-            )
+            layers = [
+                Extract_Transform_Load.load_leased_areas,
+                Extract_Transform_Load.load_compartments,
+                Extract_Transform_Load.load_subcompartments,
+                Extract_Transform_Load.load_unplantable_areas,
+                Extract_Transform_Load.load_field_mapped_farms,
+                Extract_Transform_Load.load_rb_roads,
+                Extract_Transform_Load.load_rb_assigned_psps,
+                Extract_Transform_Load.load_rb_completed_psps,
+            ]
+
+        else:
+            return
+
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            futures = {
+                executor.submit(fn, schema, source_conn, target_conn): fn.__name__
+                for fn in layers
+            }
+            for future in as_completed(futures):
+                future.result()
+
     except Exception:
         raise
