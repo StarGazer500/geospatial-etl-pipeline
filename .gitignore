@@ -1,2 +1,5 @@
 .env
 cache_dir
+
+notebook/land_prep_start_date_2025.csv
+notebook/land_prep_start_date.ipynb
