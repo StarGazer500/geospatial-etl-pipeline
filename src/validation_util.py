@@ -89,18 +89,18 @@ class Validation:
 
 
     @classmethod
-    def validate_schema(cls, conn, schema):
-        cls.load_validation_rules(conn)
+    def validate_schema(cls, val_conn,project_db_conn, schema):
+        cls.load_validation_rules(val_conn)
 
         # Layer Check
-        layer_check_result = cls.check_layer_name(conn, schema)
+        layer_check_result = cls.check_layer_name(project_db_conn, schema)
         if layer_check_result["other_required_layers"]:
             print('Layer name validation failed')
             print(f"Missing layers: {layer_check_result['other_required_layers']}")
             return False
 
         # Column check
-        column_check_result = cls.check_column_name(conn, schema, layer_check=layer_check_result)
+        column_check_result = cls.check_column_name(project_db_conn, schema, layer_check=layer_check_result)
 
         # Check if any layers have missing columns
         layers_with_missing_columns = []

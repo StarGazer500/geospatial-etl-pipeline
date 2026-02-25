@@ -1,19 +1,8 @@
-import os
+
 from sqlalchemy import text, create_engine
 
 
-source_host = os.getenv("SOURCE_HOST")
-source_database_name = os.getenv("SOURCE_DATABASE_NAME")
-source_port = os.getenv("SOURCE_PORT")
-source_username = os.getenv("SOURCE_USERNAME")
-source_password = os.getenv("SOURCE_PASSWORD")
 
-
-target_host = os.getenv("TARGET_HOST")
-target_database_name = os.getenv("TARGET_DATABASE_NAME")
-target_port = os.getenv("TARGET_PORT")
-target_username = os.getenv("TARGET_USERNAME")
-target_password = os.getenv("TARGET_PASSWORD")
 
 
 class DatabaseConnection:
@@ -45,32 +34,48 @@ class DatabaseConnection:
 
 
     @classmethod
-    def connect_to_source_postgis_database(cls):
+    def connect_to_source_postgis_database(cls,host,database_name,port,username,password):
+        try:
+            
+            conn = DatabaseConnection._create_engine(
+                host, database_name, port,
+                username, password, "SOURCE"
+            )
+            
+            print("Source database connection successful!")
+            return conn
+            
+        except Exception as e:
+            print(f'Error connecting to Source database: {e}')
+            return None
+        
+    @classmethod
+    def connect_to_validation_postgis_database(cls,host,database_name,port,username,password):
         try:
             if not cls.source_conn:
                 conn = DatabaseConnection._create_engine(
-                    source_host, source_database_name, source_port,
-                    source_username, source_password, "SOURCE"
+                    host, database_name, port,
+                    username, password, "VALIDATION"
                 )
                 cls.source_conn = conn
-                print("Source database connection successful!")
+                print("Validation database connection successful!")
                 return cls.source_conn
             else:
-                print("Source database connection successful!")
+                print("Validation database connection successful!")
                 return cls.source_conn
         except Exception as e:
-            print(f'Error connecting to Source database: {e}')
+            print(f'Error connecting to Validation database: {e}')
             return None
 
 
 
     @classmethod
-    def connect_to_target_postgis_database(cls):
+    def connect_to_target_postgis_database(cls,host,database_name,port,username,password):
         try:
             if not cls.target_conn:
                 conn = DatabaseConnection._create_engine(
-                    target_host, target_database_name, target_port,
-                    target_username, target_password, "TARGET"
+                    host, database_name, port,
+                    username, password, "TARGET"
                 )
                 cls.target_conn = conn
                 print("Target database connection successful!")
