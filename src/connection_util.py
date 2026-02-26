@@ -7,7 +7,7 @@ from sqlalchemy import text, create_engine
 
 class DatabaseConnection:
 
-    source_conn = None
+    val_conn = None
     target_conn = None
 
     @staticmethod
@@ -52,17 +52,17 @@ class DatabaseConnection:
     @classmethod
     def connect_to_validation_postgis_database(cls,host,database_name,port,username,password):
         try:
-            if not cls.source_conn:
+            if not cls.val_conn:
                 conn = DatabaseConnection._create_engine(
                     host, database_name, port,
                     username, password, "VALIDATION"
                 )
-                cls.source_conn = conn
+                cls.val_conn = conn
                 print("Validation database connection successful!")
-                return cls.source_conn
+                return cls.val_conn
             else:
                 print("Validation database connection successful!")
-                return cls.source_conn
+                return cls.val_conn
         except Exception as e:
             print(f'Error connecting to Validation database: {e}')
             return None

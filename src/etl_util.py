@@ -185,35 +185,35 @@ class Extract_Transform_Load:
                 """
 
             source_data = None
-            if schema == 'akwaaba_schema' or schema == 'buffalo_schema':
+            # if schema == 'akwaaba_schema' or schema == 'buffalo_schema':
 
-                source_test_data = read_test_data(r"C:\Users\LENOVO\Downloads\test_subcomps_akw_buf.gpkg", schema.split('_')[0])
-                source_db_data = DataManagement.execute_spatial_query(
-                    conn=source_conn,
-                    query=query,
-                )
+            source_test_data = read_test_data(r"C:\Users\LENOVO\Downloads\test_subcomps_akw_buf_new.gpkg", schema.split('_')[0])
+            source_db_data = DataManagement.execute_spatial_query(
+                conn=source_conn,
+                query=query,
+            )
 
-                if source_db_data.empty or source_test_data.empty:
-                    return "source db data and test db data mismatch"
+            if source_db_data.empty or source_test_data.empty:
+                return "source db data and test db data mismatch"
 
-                geom_col = source_db_data.geometry.name
-                if source_test_data.geometry.name != geom_col:
-                    source_test_data = source_test_data.rename_geometry(geom_col)
+            geom_col = source_db_data.geometry.name
+            if source_test_data.geometry.name != geom_col:
+                source_test_data = source_test_data.rename_geometry(geom_col)
 
-                if source_test_data.crs != source_db_data.crs:
-                    source_test_data = source_test_data.to_crs(source_db_data.crs)
+            if source_test_data.crs != source_db_data.crs:
+                source_test_data = source_test_data.to_crs(source_db_data.crs)
 
-                source_data = gpd.GeoDataFrame(
-                    pd.concat([source_db_data, source_test_data], ignore_index=True),
-                    crs=source_db_data.crs,
-                    geometry=geom_col
-                )
+            source_data = gpd.GeoDataFrame(
+                pd.concat([source_db_data, source_test_data], ignore_index=True),
+                crs=source_db_data.crs,
+                geometry=geom_col
+            )
 
-            else:
-                source_data = DataManagement.execute_spatial_query(
-                    conn=source_conn,
-                    query=query,
-                )
+            # else:
+            #     source_data = DataManagement.execute_spatial_query(
+            #         conn=source_conn,
+            #         query=query,
+            #     )
 
             if source_data.empty:
                 print("No data found")
