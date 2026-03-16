@@ -187,7 +187,7 @@ class Extract_Transform_Load:
             source_data = None
             # if schema == 'akwaaba_schema' or schema == 'buffalo_schema':
 
-            source_test_data = read_test_data(r"C:\Users\LENOVO\Downloads\test_subcomps_akw_buf_new.gpkg", schema.split('_')[0])
+            source_test_data = read_test_data(r"C:\Users\LENOVO\Downloads\test_subcomps_akw_buf_new3.gpkg", schema.split('_')[0])
             source_db_data = DataManagement.execute_spatial_query(
                 conn=source_conn,
                 query=query,

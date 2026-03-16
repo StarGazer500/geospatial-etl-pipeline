@@ -1,5 +1,3 @@
-from shapely.ops import transform as shapely_transform
-
 from data_management_util import DataManagement
 
 
@@ -54,7 +52,7 @@ class Validation:
             layer_check['expected_layers'] = buffalo_expected_layers
 
         elif project_schema == "colobus_schema":
-            colobus_expected_layers = [x for x in expected_layers if x not in ("intercropped_farms",)]
+            colobus_expected_layers = [x for x in expected_layers if x not in ("intercropped_farms")]
             for layer in colobus_expected_layers:
                 if layer in project_layers:
                     layer_check["matching_layers"].append(layer)
@@ -143,13 +141,6 @@ class Validation:
 
         # Remove null and empty geometries
         gdf = gdf[gdf.geometry.notna() & ~gdf.geometry.is_empty].copy()
-
-        # Strip Z coordinates to avoid 2D/3D mismatch on insert
-        if gdf.geometry.has_z.any():
-            geom_col = gdf.geometry.name
-            gdf[geom_col] = gdf[geom_col].apply(
-                lambda g: shapely_transform(lambda x, y, *_: (x, y), g)
-            )
 
         # Check if fixing is needed
         invalid_count = (~gdf.geometry.is_valid).sum()
