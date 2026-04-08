@@ -5,7 +5,7 @@ from etl_util import Extract_Transform_Load
 
 def run_etl_pipeline(schema, source_conn, target_conn):
     try:
-        # Akwaaba has all the layers
+        # Akwaaba does not have firebreaks
         if schema == 'akwaaba_schema':
             layers = [
                 Extract_Transform_Load.load_leased_areas,
@@ -17,6 +17,7 @@ def run_etl_pipeline(schema, source_conn, target_conn):
                 Extract_Transform_Load.load_rb_roads,
                 Extract_Transform_Load.load_rb_assigned_psps,
                 Extract_Transform_Load.load_rb_completed_psps,
+                # Extract_Transform_Load.load_firebreaks
             ]
 
         # Buffalo currently does not have field mapped farms and intercropped farms
@@ -29,6 +30,7 @@ def run_etl_pipeline(schema, source_conn, target_conn):
                 Extract_Transform_Load.load_rb_roads,
                 Extract_Transform_Load.load_rb_assigned_psps,
                 Extract_Transform_Load.load_rb_completed_psps,
+                # Extract_Transform_Load.load_firebreaks
             ]
 
         # Colobus currently does not have intercropped areas
@@ -42,6 +44,7 @@ def run_etl_pipeline(schema, source_conn, target_conn):
                 Extract_Transform_Load.load_rb_roads,
                 Extract_Transform_Load.load_rb_assigned_psps,
                 Extract_Transform_Load.load_rb_completed_psps,
+                Extract_Transform_Load.load_firebreaks
             ]
 
         else:

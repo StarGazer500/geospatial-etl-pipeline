@@ -540,3 +540,51 @@ class Extract_Transform_Load:
             print(e)
 
             raise
+
+
+    def load_firebreaks(schema, source_conn, target_conn):
+
+        is_loaded = SavePoints.get_layer_progress(f"{schema}_firebreaks_{datetime.now().date()}")
+        if is_loaded:
+            print(f'{schema} firebreaks  already loaded')
+            return
+
+        try:
+            query = f"""
+            SELECT
+              firebreak_id,
+              lease_id,
+              CAST(perimeter AS DOUBLE PRECISION) AS perimeter,
+              CAST(area_ha AS DOUBLE PRECISION) AS area_ha,
+              geom
+            FROM {schema}.firebreaks
+            """
+            source_data = DataManagement.execute_spatial_query(
+                conn=source_conn,
+                query=query,
+            )
+
+            if source_data.empty:
+                print("No data found")
+                return
+
+            source_data = Validation.validate_and_fix_geometries(source_data)
+
+            DataManagement.save_spatial_data_to_postgres(
+                conn=target_conn,
+                data=source_data,
+                table_name='firebreaks',
+                schema=schema
+            )
+
+            SavePoints.save_layer_progress(f"{schema}_firebreaks_{datetime.now().date()}", True)
+
+            print(f'{schema} Firebreaks Loaded Successfully')
+
+        except Exception as e:
+
+            SavePoints.save_layer_progress(f"{schema}_firebreaks_{datetime.now().date()}", False)
+
+            print(e)
+
+            raise
