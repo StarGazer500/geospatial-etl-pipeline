@@ -13,12 +13,13 @@ class DataManagement():
     @staticmethod
     def execute_spatial_query(conn, query, geom_col='geom'):
         """executes query and returns GeoDataFrame"""
-        try:
-            with conn['sync'].connect() as sync_conn:
+        with conn['sync'].connect() as sync_conn:
+            try:
                 return gpd.read_postgis(query, sync_conn, geom_col=geom_col)
-        except Exception as e:
-            print(e)
-            raise
+            except Exception as e:
+                sync_conn.rollback()
+                print(e)
+                raise
 
 
 

@@ -22,6 +22,7 @@ class DatabaseConnection:
             pool_size=3,
             max_overflow=0,
             pool_timeout=60,
+            pool_pre_ping=True,
             connect_args={"options": "-c lock_timeout=30000"},
         )
 
