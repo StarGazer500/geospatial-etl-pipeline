@@ -8,7 +8,7 @@ from etl_util import Extract_Transform_Load
 # Allowed values: 'road_buffers', 'water_buffers', 'firebreaks', 'unplantable_areas', 'protected_areas'
 SUBCOMP_OPTIONAL_LAYERS = {
     'akwaaba_schema': ['protected_areas', 'unplantable_areas'],
-    'buffalo_schema': ['road_buffers' , 'unplantable_areas', 'firebreaks'],
+    'buffalo_schema': ['unplantable_areas', 'firebreaks'],
     'colobus_schema': ['road_buffers', 'water_buffers', 'firebreaks', 'unplantable_areas'],
 }
 
@@ -39,12 +39,13 @@ def run_etl_pipeline(schema, source_conn, target_conn):
         # Buffalo currently does not have field mapped farms and intercropped farms
         elif schema == 'buffalo_schema':
             layers = [
-                Extract_Transform_Load.load_leased_areas,
-                Extract_Transform_Load.load_compartments,
-                load_subcompartments,
-                Extract_Transform_Load.load_rb_roads,
-                Extract_Transform_Load.load_rb_assigned_psps,
-                Extract_Transform_Load.load_rb_completed_psps,
+                # Extract_Transform_Load.load_leased_areas,
+                # Extract_Transform_Load.load_compartments,
+                Extract_Transform_Load.load_subcompartments,
+                
+                # Extract_Transform_Load.load_rb_roads,
+                # Extract_Transform_Load.load_rb_assigned_psps,
+                # Extract_Transform_Load.load_rb_completed_psps,
                 # Extract_Transform_Load.load_firebreaks
             ]
 
