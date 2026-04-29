@@ -39,11 +39,12 @@ class DataManagement():
 
     @staticmethod
     def create_target_schema_if_not_exists(conn, schema):
-        """Creates schema if it does not exist"""
-        if schema:
-            with conn['sync'].connect() as connection:
+        """Creates schema if it does not exist and ensures PostGIS extension is enabled"""
+        with conn['sync'].connect() as connection:
+            connection.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
+            if schema:
                 connection.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
-                connection.commit()
+            connection.commit()
 
 
 
