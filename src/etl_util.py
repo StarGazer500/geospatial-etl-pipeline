@@ -40,7 +40,7 @@ class Extract_Transform_Load:
                   geom_status,
                   lease_status,
                   year_leased,
-                  area_ha,
+                  ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000)::numeric, 3) as area_ha,
                   link_to_lease_document
                 FROM {schema}.leased_areas
                 """
@@ -104,7 +104,7 @@ class Extract_Transform_Load:
                   lease_id,
                   compartment_id,
                   geom,
-                  area_ha,
+                  ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000)::numeric, 3) as area_ha,
                   n_psp_target,
                   year_created
                 FROM {schema}.compartments
@@ -171,7 +171,7 @@ class Extract_Transform_Load:
                 SELECT
                   subcompartment_id,
                   ST_Multi(ST_CollectionExtract(ST_Union(geom), 3)) as geom,
-                  ROUND(CAST(ST_Area(ST_Multi(ST_CollectionExtract(ST_Union(geom), 3))::geography) / 10000.0 AS NUMERIC), 3) AS area_ha,
+                  ROUND(CAST(ST_Area(ST_Transform(ST_Multi(ST_CollectionExtract(ST_Union(geom), 3)), 4326)::geography) / 10000.0 AS NUMERIC), 3) AS area_ha,
                   MAX(compartment_id) AS compartment_id,
                   MAX(treatment_type) AS treatment_type,
                   MAX(sph) AS sph,
@@ -188,7 +188,7 @@ class Extract_Transform_Load:
                 SELECT
                   subcompartment_id,
                   geom,
-                  ROUND(CAST(ST_Area(geom::geography) / 10000.0 AS NUMERIC), 3) AS area_ha,
+                  ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000)::numeric, 3) as area_ha,
                   compartment_id,
                   treatment_type,
                   planting_status,
@@ -231,136 +231,174 @@ class Extract_Transform_Load:
 
             # --- Road Buffers (unplantable) ---
             if 'road_buffers' in optional_layers:
-                road_buffer_query = f"""
-                SELECT
-                  road_buffer_id,
-                  ROUND(CAST(ST_Area(geom::geography) / 10000.0 AS NUMERIC), 3) AS area_ha,
-                  geom
-                FROM {schema}.road_buffers
-                """
-                road_buffers = DataManagement.execute_spatial_query(conn=source_conn, query=road_buffer_query)
-                if not road_buffers.empty:
-                    road_buffers = road_buffers.rename(columns={'road_buffer_id': 'subcompartment_id', road_buffers.geometry.name: 'geom'})
-                    road_buffers = gpd.GeoDataFrame(road_buffers, geometry='geom', crs=road_buffers.crs)
-                    road_buffers['category'] = 'unplantable'
-                    road_buffers['subcategory'] = 'road_buffer'
-                    road_buffers['treatment'] = None
-                    road_buffers['planting_type'] = None
-                    road_buffers['year_planted'] = None
-                    road_buffers['plant_start_date'] = None
-                    road_buffers['lp_start_date'] = None
-                    road_buffers['sph'] = None
-                    road_buffers['compartment_id'] = None
-                    road_buffers['source_layer'] = 'road_buffers'
-                    frames.append(road_buffers[UNIFIED_COLS])
+                print(f'{schema} loading road_buffers...')
+                try:
+                    road_buffer_query = f"""
+                    SELECT
+                      road_buffer_id,
+                      ROUND(CAST(ST_Area(ST_Transform(geom, 4326)::geography) / 10000.0 AS NUMERIC), 3) AS area_ha,
+                      geom
+                    FROM {schema}.road_buffers
+                    """
+                    road_buffers = DataManagement.execute_spatial_query(conn=source_conn, query=road_buffer_query)
+                    if not road_buffers.empty:
+                        road_buffers = road_buffers.rename(columns={'road_buffer_id': 'subcompartment_id', road_buffers.geometry.name: 'geom'})
+                        road_buffers = gpd.GeoDataFrame(road_buffers, geometry='geom', crs=road_buffers.crs)
+                        road_buffers['category'] = 'unplantable'
+                        road_buffers['subcategory'] = 'road_buffer'
+                        road_buffers['treatment'] = None
+                        road_buffers['planting_type'] = None
+                        road_buffers['year_planted'] = None
+                        road_buffers['plant_start_date'] = None
+                        road_buffers['lp_start_date'] = None
+                        road_buffers['sph'] = None
+                        road_buffers['compartment_id'] = None
+                        road_buffers['source_layer'] = 'road_buffers'
+                        frames.append(road_buffers[UNIFIED_COLS])
+                        print(f'{schema} road_buffers: {len(road_buffers)} records')
+                    else:
+                        print(f'{schema} road_buffers: 0 records found')
+                except Exception as e:
+                    print(f'{schema} road_buffers skipped: {e}')
 
             # --- Water Buffers (unplantable) ---
             if 'water_buffers' in optional_layers:
-                water_buffer_query = f"""
-                SELECT
-                  water_buffer_id,
-                  ROUND(CAST(ST_Area(geom::geography) / 10000.0 AS NUMERIC), 3) AS area_ha,
-                  geom
-                FROM {schema}.water_buffers
-                """
-                water_buffers = DataManagement.execute_spatial_query(conn=source_conn, query=water_buffer_query)
-                if not water_buffers.empty:
-                    water_buffers = water_buffers.rename(columns={'water_buffer_id': 'subcompartment_id', water_buffers.geometry.name: 'geom'})
-                    water_buffers = gpd.GeoDataFrame(water_buffers, geometry='geom', crs=water_buffers.crs)
-                    water_buffers['category'] = 'unplantable'
-                    water_buffers['subcategory'] = 'water_buffer'
-                    water_buffers['treatment'] = None
-                    water_buffers['planting_type'] = None
-                    water_buffers['year_planted'] = None
-                    water_buffers['plant_start_date'] = None
-                    water_buffers['lp_start_date'] = None
-                    water_buffers['sph'] = None
-                    water_buffers['compartment_id'] = None
-                    water_buffers['source_layer'] = 'water_buffers'
-                    frames.append(water_buffers[UNIFIED_COLS])
+                print(f'{schema} loading water_buffers...')
+                try:
+                    water_buffer_query = f"""
+                    SELECT
+                      water_buffer_id,
+                      ROUND(CAST(ST_Area(ST_Transform(geom, 4326)::geography) / 10000.0 AS NUMERIC), 3) AS area_ha,
+                      geom
+                    FROM {schema}.water_buffers
+                    """
+                    water_buffers = DataManagement.execute_spatial_query(conn=source_conn, query=water_buffer_query)
+                    if not water_buffers.empty:
+                        water_buffers = water_buffers.rename(columns={'water_buffer_id': 'subcompartment_id', water_buffers.geometry.name: 'geom'})
+                        water_buffers = gpd.GeoDataFrame(water_buffers, geometry='geom', crs=water_buffers.crs)
+                        water_buffers['category'] = 'unplantable'
+                        water_buffers['subcategory'] = 'water_buffer'
+                        water_buffers['treatment'] = None
+                        water_buffers['planting_type'] = None
+                        water_buffers['year_planted'] = None
+                        water_buffers['plant_start_date'] = None
+                        water_buffers['lp_start_date'] = None
+                        water_buffers['sph'] = None
+                        water_buffers['compartment_id'] = None
+                        water_buffers['source_layer'] = 'water_buffers'
+                        frames.append(water_buffers[UNIFIED_COLS])
+                        print(f'{schema} water_buffers: {len(water_buffers)} records')
+                    else:
+                        print(f'{schema} water_buffers: 0 records found')
+                except Exception as e:
+                    print(f'{schema} water_buffers skipped: {e}')
 
             # --- Firebreaks (unplantable) ---
             if 'firebreaks' in optional_layers:
-                firebreak_query = f"""
-                SELECT
-                  firebreak_id,
-                  ROUND(CAST(ST_Area(geom::geography) / 10000.0 AS NUMERIC), 3) AS area_ha,
-                  geom
-                FROM {schema}.firebreaks
-                """
-                firebreaks = DataManagement.execute_spatial_query(conn=source_conn, query=firebreak_query)
-                if not firebreaks.empty:
-                    firebreaks = firebreaks.rename(columns={'firebreak_id': 'subcompartment_id', firebreaks.geometry.name: 'geom'})
-                    firebreaks = gpd.GeoDataFrame(firebreaks, geometry='geom', crs=firebreaks.crs)
-                    firebreaks['category'] = 'unplantable'
-                    firebreaks['subcategory'] = 'firebreak'
-                    firebreaks['treatment'] = None
-                    firebreaks['planting_type'] = None
-                    firebreaks['year_planted'] = None
-                    firebreaks['plant_start_date'] = None
-                    firebreaks['lp_start_date'] = None
-                    firebreaks['sph'] = None
-                    firebreaks['compartment_id'] = None
-                    firebreaks['source_layer'] = 'firebreaks'
-                    frames.append(firebreaks[UNIFIED_COLS])
+                print(f'{schema} loading firebreaks...')
+                try:
+                    firebreak_query = f"""
+                    SELECT
+                      firebreak_id,
+                      ROUND(CAST(ST_Area(ST_Transform(geom, 4326)::geography) / 10000.0 AS NUMERIC), 3) AS area_ha,
+                      geom
+                    FROM {schema}.firebreaks
+                    """
+                    firebreaks = DataManagement.execute_spatial_query(conn=source_conn, query=firebreak_query)
+                    if not firebreaks.empty:
+                        firebreaks = firebreaks.rename(columns={'firebreak_id': 'subcompartment_id', firebreaks.geometry.name: 'geom'})
+                        firebreaks = gpd.GeoDataFrame(firebreaks, geometry='geom', crs=firebreaks.crs)
+                        firebreaks['category'] = 'unplantable'
+                        firebreaks['subcategory'] = 'firebreak'
+                        firebreaks['treatment'] = None
+                        firebreaks['planting_type'] = None
+                        firebreaks['year_planted'] = None
+                        firebreaks['plant_start_date'] = None
+                        firebreaks['lp_start_date'] = None
+                        firebreaks['sph'] = None
+                        firebreaks['compartment_id'] = None
+                        firebreaks['source_layer'] = 'firebreaks'
+                        frames.append(firebreaks[UNIFIED_COLS])
+                        print(f'{schema} firebreaks: {len(firebreaks)} records')
+                    else:
+                        print(f'{schema} firebreaks: 0 records found')
+                except Exception as e:
+                    print(f'{schema} firebreaks skipped: {e}')
 
             # --- Unplantable Areas (unplantable, subcategory from damage_type) ---
             if 'unplantable_areas' in optional_layers:
-                unplantable_query = f"""
-                SELECT
-                  unplantable_id,
-                  compartment_id,
-                  ROUND(CAST(ST_Area(geom::geography) / 10000.0 AS NUMERIC), 3) AS area_ha,
-                  damage_type,
-                  geom
-                FROM {schema}.unplantable_areas
-                """
-                unplantables = DataManagement.execute_spatial_query(conn=source_conn, query=unplantable_query)
-                if not unplantables.empty:
-                    unplantables = unplantables.rename(columns={
-                        'unplantable_id': 'subcompartment_id',
-                        'damage_type': 'subcategory',
-                        unplantables.geometry.name: 'geom'
-                    })
-                    unplantables = gpd.GeoDataFrame(unplantables, geometry='geom', crs=unplantables.crs)
-                    unplantables['category'] = 'unplantable'
-                    unplantables['treatment'] = None
-                    unplantables['planting_type'] = None
-                    unplantables['year_planted'] = None
-                    unplantables['plant_start_date'] = None
-                    unplantables['lp_start_date'] = None
-                    unplantables['sph'] = None
-                    unplantables['source_layer'] = 'unplantable_areas'
-                    frames.append(unplantables[UNIFIED_COLS])
+                print(f'{schema} loading unplantable_areas...')
+                try:
+                    unplantable_query = f"""
+                    SELECT
+                      unplantable_id,
+                      compartment_id,
+                      ROUND(CAST(ST_Area(ST_Transform(geom, 4326)::geography) / 10000.0 AS NUMERIC), 3) AS area_ha,
+                      damage_type,
+                      geom
+                    FROM {schema}.unplantable_areas
+                    """
+                    unplantables = DataManagement.execute_spatial_query(conn=source_conn, query=unplantable_query)
+                    if not unplantables.empty:
+                        unplantables = unplantables.rename(columns={
+                            'unplantable_id': 'subcompartment_id',
+                            'damage_type': 'subcategory',
+                            unplantables.geometry.name: 'geom'
+                        })
+                        unplantables = gpd.GeoDataFrame(unplantables, geometry='geom', crs=unplantables.crs)
+                        unplantables['category'] = 'unplantable'
+                        unplantables['treatment'] = None
+                        unplantables['planting_type'] = None
+                        unplantables['year_planted'] = None
+                        unplantables['plant_start_date'] = None
+                        unplantables['lp_start_date'] = None
+                        unplantables['sph'] = None
+                        unplantables['source_layer'] = 'unplantable_areas'
+                        frames.append(unplantables[UNIFIED_COLS])
+                        print(f'{schema} unplantable_areas: {len(unplantables)} records')
+                    else:
+                        print(f'{schema} unplantable_areas: 0 records found')
+                except Exception as e:
+                    print(f'{schema} unplantable_areas skipped: {e}')
 
             # --- Protected Areas (plantable) ---
             if 'protected_areas' in optional_layers:
-                protected_query = f"""
-                SELECT
-                  protected_area_id,
-                  ROUND(CAST(ST_Area(geom::geography) / 10000.0 AS NUMERIC), 3) AS area_ha,
-                  geom
-                FROM {schema}.protected_areas
-                """
-                protected = DataManagement.execute_spatial_query(conn=source_conn, query=protected_query)
-                if not protected.empty:
-                    protected = protected.rename(columns={'protected_area_id': 'subcompartment_id', protected.geometry.name: 'geom'})
-                    protected = gpd.GeoDataFrame(protected, geometry='geom', crs=protected.crs)
-                    protected['category'] = 'plantable'
-                    protected['subcategory'] = 'protection'
-                    protected['treatment'] = None
-                    protected['planting_type'] = None
-                    protected['year_planted'] = None
-                    protected['plant_start_date'] = None
-                    protected['lp_start_date'] = None
-                    protected['sph'] = None
-                    protected['compartment_id'] = None
-                    protected['source_layer'] = 'protected_areas'
-                    frames.append(protected[UNIFIED_COLS])
+                print(f'{schema} loading protected_areas...')
+                try:
+                    protected_query = f"""
+                    SELECT
+                      protected_area_id,
+                      ROUND(CAST(ST_Area(ST_Transform(geom, 4326)::geography) / 10000.0 AS NUMERIC), 3) AS area_ha,
+                      geom
+                    FROM {schema}.protected_areas
+                    """
+                    protected = DataManagement.execute_spatial_query(conn=source_conn, query=protected_query)
+                    if not protected.empty:
+                        protected = protected.rename(columns={'protected_area_id': 'subcompartment_id', protected.geometry.name: 'geom'})
+                        protected = gpd.GeoDataFrame(protected, geometry='geom', crs=protected.crs)
+                        protected['category'] = 'plantable'
+                        protected['subcategory'] = 'protection'
+                        protected['treatment'] = None
+                        protected['planting_type'] = None
+                        protected['year_planted'] = None
+                        protected['plant_start_date'] = None
+                        protected['lp_start_date'] = None
+                        protected['sph'] = None
+                        protected['compartment_id'] = None
+                        protected['source_layer'] = 'protected_areas'
+                        frames.append(protected[UNIFIED_COLS])
+                        print(f'{schema} protected_areas: {len(protected)} records')
+                    else:
+                        print(f'{schema} protected_areas: 0 records found')
+                except Exception as e:
+                    print(f'{schema} protected_areas skipped: {e}')
 
             if not frames:
                 print(f'No data found for {schema} subcompartments')
                 return
+
+            layer_summary = ', '.join(f"{f['source_layer'].iloc[0]}({len(f)})" for f in frames)
+            print(f'{schema} merging layers: {layer_summary}')
 
             ref_crs = frames[0].crs
             aligned = []
@@ -447,7 +485,7 @@ class Extract_Transform_Load:
               compartment_id,
               farm_id,
               geom,
-              area_ha,
+              ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000)::numeric, 3) as area_ha,
               date_mapped,
               mapped_by
             FROM {schema}.field_mapped_farms
