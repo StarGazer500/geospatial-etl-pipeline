@@ -25,40 +25,51 @@ def run_etl_pipeline(schema, source_conn, target_conn):
         # Akwaaba does not have firebreaks
         if schema == 'akwaaba_schema':
             layers = [
-                # Extract_Transform_Load.load_leased_areas,
-                # Extract_Transform_Load.load_compartments,
-                load_subcompartments,
-                # Extract_Transform_Load.load_field_mapped_farms,
-                # Extract_Transform_Load.load_intercropped_farms,
-                # Extract_Transform_Load.load_rb_roads,
-                # Extract_Transform_Load.load_rb_assigned_psps,
-                # Extract_Transform_Load.load_rb_completed_psps,
-                # Extract_Transform_Load.load_firebreaks
+                Extract_Transform_Load.load_leased_areas,
+                Extract_Transform_Load.load_compartments,
+                Extract_Transform_Load.load_plantable_areas,
+                Extract_Transform_Load.load_unplantable_areas,
+                Extract_Transform_Load.load_field_mapped_farms,
+                Extract_Transform_Load.load_intercropped_farms,
+                Extract_Transform_Load.load_rb_roads,
+                Extract_Transform_Load.load_rb_assigned_psps,
+                Extract_Transform_Load.load_rb_completed_psps,
+                Extract_Transform_Load.load_protected_areas,
+                Extract_Transform_Load.load_subcompartments_stratum_on_lease
             ]
 
         # Buffalo currently does not have field mapped farms and intercropped farms
         elif schema == 'buffalo_schema':
             layers = [
-                # Extract_Transform_Load.load_leased_areas,
-                # Extract_Transform_Load.load_compartments,
-                load_subcompartments,
-                # Extract_Transform_Load.load_rb_roads,
-                # Extract_Transform_Load.load_rb_assigned_psps,
-                # Extract_Transform_Load.load_rb_completed_psps,
-                # Extract_Transform_Load.load_firebreaks
+                Extract_Transform_Load.load_leased_areas,
+                Extract_Transform_Load.load_compartments,
+                Extract_Transform_Load.load_plantable_areas,
+                Extract_Transform_Load.load_unplantable_areas,
+                Extract_Transform_Load.load_rb_roads,
+                Extract_Transform_Load.load_rb_assigned_psps,
+                Extract_Transform_Load.load_rb_completed_psps,
+                Extract_Transform_Load.load_firebreaks,
+                Extract_Transform_Load.load_protected_areas,
+                Extract_Transform_Load.load_subcompartments_stratum_on_lease
+                
             ]
 
         # Colobus currently does not have intercropped areas
         elif schema == 'colobus_schema':
             layers = [
-                # Extract_Transform_Load.load_leased_areas,
-                # Extract_Transform_Load.load_compartments,
-                load_subcompartments,
-                # Extract_Transform_Load.load_field_mapped_farms,
-                # Extract_Transform_Load.load_rb_roads,
-                # Extract_Transform_Load.load_rb_assigned_psps,
-                # Extract_Transform_Load.load_rb_completed_psps,
-                # Extract_Transform_Load.load_firebreaks
+                Extract_Transform_Load.load_leased_areas,
+                Extract_Transform_Load.load_compartments,
+                Extract_Transform_Load.load_plantable_areas,
+                Extract_Transform_Load.load_unplantable_areas,
+                Extract_Transform_Load.load_field_mapped_farms,
+                Extract_Transform_Load.load_rb_roads,
+                Extract_Transform_Load.load_rb_assigned_psps,
+                Extract_Transform_Load.load_rb_completed_psps,
+                Extract_Transform_Load.load_firebreaks,
+                Extract_Transform_Load.load_protected_areas,
+                Extract_Transform_Load.load_road_buffers,
+                Extract_Transform_Load.load_subcompartments_stratum_on_lease
+
             ]
 
         else:

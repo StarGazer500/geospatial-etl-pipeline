@@ -141,8 +141,120 @@ class Extract_Transform_Load:
             raise
 
 
+    def load_plantable_areas(schema, source_conn, target_conn):
 
-    def load_subcompartments(schema, source_conn, target_conn, optional_layers=None):
+        is_loaded = SavePoints.get_layer_progress(f"{schema}_subcompartments_{datetime.now().date()}")
+        if is_loaded:
+            print(f'{schema} subcompartments  already loaded')
+            return
+
+        try:
+            query = None
+
+            if schema == 'buffalo_schema':
+                query = f"""
+                SELECT
+                  subcompartment_id,
+                  geom,
+                  ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000)::numeric, 3) as area_ha,
+                  compartment_id,
+                  treatment_type,
+                  planting_status,
+                  year_planted,
+                  planting_type,
+                  lp_start_date,
+                  plant_start_date
+                FROM (
+                  SELECT
+                    subcompartment_id,
+                    ST_Multi(ST_CollectionExtract(ST_Union(geom), 3)) as geom,
+                    MAX(compartment_id) AS compartment_id,
+                    MAX(treatment_type) AS treatment_type,
+                    MAX(planting_status) AS planting_status,
+                    MIN(year_planted) AS year_planted,
+                    MAX(planting_type) AS planting_type,
+                    MIN(lp_start_date) AS lp_start_date,
+                    MIN(plant_start_date) AS plant_start_date
+                  FROM {schema}.subcompartments
+                  GROUP BY subcompartment_id
+                ) sub;
+                """
+            else:
+                query = f"""
+                SELECT
+                  subcompartment_id,
+                  geom,
+                  ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000)::numeric, 3) as area_ha,
+                  compartment_id,
+                  treatment_type,
+                  planting_status,
+                  year_planted,
+                  planting_type,
+                  lp_start_date,
+                  plant_start_date
+                FROM {schema}.subcompartments
+                """
+
+            source_data = None
+            # if schema == 'akwaaba_schema' or schema == 'buffalo_schema':
+
+            source_test_data = read_test_data(r"C:\Users\LENOVO\Downloads\test_subcomps_akw_buf_new3.gpkg", schema.split('_')[0])
+            source_db_data = DataManagement.execute_spatial_query(
+                conn=source_conn,
+                query=query,
+            )
+
+            if source_db_data.empty or source_test_data.empty:
+                return "source db data and test db data mismatch"
+
+            geom_col = source_db_data.geometry.name
+            if source_test_data.geometry.name != geom_col:
+                source_test_data = source_test_data.rename_geometry(geom_col)
+
+            if source_test_data.crs != source_db_data.crs:
+                source_test_data = source_test_data.to_crs(source_db_data.crs)
+
+            source_data = gpd.GeoDataFrame(
+                pd.concat([source_db_data, source_test_data], ignore_index=True),
+                crs=source_db_data.crs,
+                geometry=geom_col
+            )
+
+            # else:
+            #     source_data = DataManagement.execute_spatial_query(
+            #         conn=source_conn,
+            #         query=query,
+            #     )
+
+            if source_data.empty:
+                print("No data found")
+                return
+
+            source_data = Validation.validate_and_fix_geometries(source_data)
+
+            DataManagement.save_spatial_data_to_postgres(
+                conn=target_conn,
+                data=source_data,
+                table_name='subcompartments',
+                schema=schema
+            )
+
+            SavePoints.save_layer_progress(f"{schema}_subcompartments_{datetime.now().date()}", True)
+
+            print(f'{schema} Subcompartments Loaded Successfully')
+
+        except Exception as e:
+
+            SavePoints.save_layer_progress(f"{schema}_subcompartments_{datetime.now().date()}", False)
+
+            print(e)
+
+            raise
+
+
+
+
+    def load_subcompartments_stratum_on_lease(schema, source_conn, target_conn, optional_layers=None):
         """
         optional_layers: list of source table names to merge in addition to subcompartments.
         Allowed values: 'road_buffers', 'firebreaks', 'unplantable_areas', 'protected_areas'.
