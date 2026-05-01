@@ -9,7 +9,6 @@ from savepoints_util import SavePoints
 
 class Extract_Transform_Load:
 
-
     def load_leased_areas(schema, source_conn, target_conn):
 
         is_loaded = SavePoints.get_layer_progress(f"{schema}_leased_areas_{datetime.now().date()}")
@@ -253,8 +252,57 @@ class Extract_Transform_Load:
 
 
 
+    def load_unplantable_areas(schema, source_conn, target_conn):
 
-    def load_subcompartments_stratum_on_lease(schema, source_conn, target_conn, optional_layers=None):
+        is_loaded = SavePoints.get_layer_progress(f"{schema}_unplantable_areas_{datetime.now().date()}")
+        if is_loaded:
+            print(f'{schema} unplantable_areas  already loaded')
+            return
+
+        try:
+            query = f"""
+            SELECT
+              compartment_id,
+              unplantable_id,
+              geom,
+              ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000)::numeric, 3) as area_ha,
+              damage_type
+            FROM {schema}.unplantable_areas
+            """
+            source_data = DataManagement.execute_spatial_query(
+                conn=source_conn,
+                query=query,
+            )
+
+            if source_data.empty:
+                print("No data found")
+                return
+
+            source_data = Validation.validate_and_fix_geometries(source_data)
+
+            DataManagement.save_spatial_data_to_postgres(
+                conn=target_conn,
+                data=source_data,
+                table_name='unplantable_areas',
+                schema=schema
+            )
+
+            SavePoints.save_layer_progress(f"{schema}_unplantable_areas_{datetime.now().date()}", True)
+
+            print(f'{schema} Unplantable Areas Loaded Successfully')
+
+        except Exception as e:
+
+            SavePoints.save_layer_progress(f"{schema}_unplantable_areas_{datetime.now().date()}", False)
+
+            print(e)
+
+            raise
+
+
+
+
+    def load_all_layer_stratum_on_lease(schema, source_conn, target_conn, optional_layers=None):
         """
         optional_layers: list of source table names to merge in addition to subcompartments.
         Allowed values: 'road_buffers', 'firebreaks', 'unplantable_areas', 'protected_areas'.
@@ -263,9 +311,9 @@ class Extract_Transform_Load:
         if optional_layers is None:
             optional_layers = []
 
-        is_loaded = SavePoints.get_layer_progress(f"{schema}_subcompartments_{datetime.now().date()}")
+        is_loaded = SavePoints.get_layer_progress(f"{schema}_lease_layer_stratum_{datetime.now().date()}")
         if is_loaded:
-            print(f'{schema} subcompartments  already loaded')
+            print(f'{schema} lease_layer_stratum already loaded')
             return
 
         UNIFIED_COLS = [
@@ -312,24 +360,7 @@ class Extract_Transform_Load:
                 FROM {schema}.subcompartments
                 """
 
-            source_test_data = read_test_data(r"C:\Users\LENOVO\Downloads\test_subcomps_akw_buf_new3.gpkg", schema.split('_')[0])
-            source_db_data = DataManagement.execute_spatial_query(conn=source_conn, query=subcomp_query)
-
-            if not source_db_data.empty and not source_test_data.empty:
-                geom_col = source_db_data.geometry.name
-                if source_test_data.geometry.name != geom_col:
-                    source_test_data = source_test_data.rename_geometry(geom_col)
-                if source_test_data.crs != source_db_data.crs:
-                    source_test_data = source_test_data.to_crs(source_db_data.crs)
-                subcomps = gpd.GeoDataFrame(
-                    pd.concat([source_db_data, source_test_data], ignore_index=True),
-                    crs=source_db_data.crs,
-                    geometry=geom_col
-                )
-            elif not source_db_data.empty:
-                subcomps = source_db_data
-            else:
-                subcomps = gpd.GeoDataFrame()
+            subcomps = DataManagement.execute_spatial_query(conn=source_conn, query=subcomp_query)
 
             if not subcomps.empty:
                 subcomps['category'] = 'plantable'
@@ -534,17 +565,17 @@ class Extract_Transform_Load:
             DataManagement.save_spatial_data_to_postgres(
                 conn=target_conn,
                 data=source_data,
-                table_name='subcompartment_stratum_on_lease',
+                table_name='lease_layer_stratum',
                 schema=schema
             )
 
-            SavePoints.save_layer_progress(f"{schema}_subcompartments_{datetime.now().date()}", True)
+            SavePoints.save_layer_progress(f"{schema}_lease_layer_stratum_{datetime.now().date()}", True)
 
-            print(f'{schema} Subcompartments Loaded Successfully')
+            print(f'{schema} Lease Layer Stratum Loaded Successfully')
 
         except Exception as e:
 
-            SavePoints.save_layer_progress(f"{schema}_subcompartments_{datetime.now().date()}", False)
+            SavePoints.save_layer_progress(f"{schema}_lease_layer_stratum_{datetime.now().date()}", False)
 
             print(e)
 

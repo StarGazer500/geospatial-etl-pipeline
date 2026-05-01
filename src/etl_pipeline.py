@@ -16,11 +16,11 @@ SUBCOMP_OPTIONAL_LAYERS = {
 def run_etl_pipeline(schema, source_conn, target_conn):
     try:
         optional_layers = SUBCOMP_OPTIONAL_LAYERS.get(schema, [])
-        load_subcompartments = partial(
-            Extract_Transform_Load.load_subcompartments,
+        load_all_layer_stratum_on_lease = partial(
+            Extract_Transform_Load.load_all_layer_stratum_on_lease,
             optional_layers=optional_layers
         )
-        load_subcompartments.__name__ = 'load_subcompartments'
+        load_all_layer_stratum_on_lease.__name__ = 'load_all_layer_stratum_on_lease'
 
         # Akwaaba does not have firebreaks
         if schema == 'akwaaba_schema':
@@ -35,7 +35,7 @@ def run_etl_pipeline(schema, source_conn, target_conn):
                 Extract_Transform_Load.load_rb_assigned_psps,
                 Extract_Transform_Load.load_rb_completed_psps,
                 Extract_Transform_Load.load_protected_areas,
-                Extract_Transform_Load.load_subcompartments_stratum_on_lease
+                load_all_layer_stratum_on_lease
             ]
 
         # Buffalo currently does not have field mapped farms and intercropped farms
@@ -50,7 +50,7 @@ def run_etl_pipeline(schema, source_conn, target_conn):
                 Extract_Transform_Load.load_rb_completed_psps,
                 Extract_Transform_Load.load_firebreaks,
                 Extract_Transform_Load.load_protected_areas,
-                Extract_Transform_Load.load_subcompartments_stratum_on_lease
+                load_all_layer_stratum_on_lease
                 
             ]
 
@@ -68,7 +68,7 @@ def run_etl_pipeline(schema, source_conn, target_conn):
                 Extract_Transform_Load.load_firebreaks,
                 Extract_Transform_Load.load_protected_areas,
                 Extract_Transform_Load.load_road_buffers,
-                Extract_Transform_Load.load_subcompartments_stratum_on_lease
+                load_all_layer_stratum_on_lease
 
             ]
 
