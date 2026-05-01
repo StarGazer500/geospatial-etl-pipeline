@@ -693,4 +693,144 @@ class Extract_Transform_Load:
             raise
 
 
+    def load_firebreaks(schema, source_conn, target_conn):
+
+        is_loaded = SavePoints.get_layer_progress(f"{schema}_firebreaks_{datetime.now().date()}")
+        if is_loaded:
+            print(f'{schema} firebreaks  already loaded')
+            return
+
+        try:
+            query = f"""
+            SELECT
+              firebreak_id,
+              lease_id,
+              CAST(perimeter AS DOUBLE PRECISION) AS perimeter,
+              ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000)::numeric, 3) as area_ha,
+              geom
+            FROM {schema}.firebreaks
+            """
+            source_data = DataManagement.execute_spatial_query(
+                conn=source_conn,
+                query=query,
+            )
+
+            if source_data.empty:
+                print("No data found")
+                return
+
+            source_data = Validation.validate_and_fix_geometries(source_data)
+
+            DataManagement.save_spatial_data_to_postgres(
+                conn=target_conn,
+                data=source_data,
+                table_name='firebreaks',
+                schema=schema
+            )
+
+            SavePoints.save_layer_progress(f"{schema}_firebreaks_{datetime.now().date()}", True)
+
+            print(f'{schema} Firebreaks Loaded Successfully')
+
+        except Exception as e:
+
+            SavePoints.save_layer_progress(f"{schema}_firebreaks_{datetime.now().date()}", False)
+
+            print(e)
+
+            raise
+
+
+    def load_protected_areas(schema, source_conn, target_conn):
+
+        is_loaded = SavePoints.get_layer_progress(f"{schema}_protected_areas_{datetime.now().date()}")
+        if is_loaded:
+            print(f'{schema} protected_areas  already loaded')
+            return
+
+        try:
+            query = f"""
+            SELECT
+              protected_area_id,
+              landcover,
+              ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000)::numeric, 3) as area_ha,
+              geom
+            FROM {schema}.protected_areas
+            """
+            source_data = DataManagement.execute_spatial_query(
+                conn=source_conn,
+                query=query,
+            )
+
+            if source_data.empty:
+                print("No data found")
+                return
+
+            source_data = Validation.validate_and_fix_geometries(source_data)
+
+            DataManagement.save_spatial_data_to_postgres(
+                conn=target_conn,
+                data=source_data,
+                table_name='protected_areas',
+                schema=schema
+            )
+
+            SavePoints.save_layer_progress(f"{schema}_protected_areas_{datetime.now().date()}", True)
+
+            print(f'{schema} Protected_areas Loaded Successfully')
+
+        except Exception as e:
+
+            SavePoints.save_layer_progress(f"{schema}_protected_areas_{datetime.now().date()}", False)
+
+            print(e)
+
+            raise
+
+    def load_road_buffers(schema, source_conn, target_conn):
+
+        is_loaded = SavePoints.get_layer_progress(f"{schema}_road_buffers_{datetime.now().date()}")
+        if is_loaded:
+            print(f'{schema} road_buffers  already loaded')
+            return
+
+        try:
+            query = f"""
+            SELECT
+              road_buffer_id,
+              ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000)::numeric, 3) as area_ha,
+              geom
+            FROM {schema}.road_buffers
+            """
+            source_data = DataManagement.execute_spatial_query(
+                conn=source_conn,
+                query=query,
+            )
+
+            if source_data.empty:
+                print("No data found")
+                return
+
+            source_data = Validation.validate_and_fix_geometries(source_data)
+
+            DataManagement.save_spatial_data_to_postgres(
+                conn=target_conn,
+                data=source_data,
+                table_name='road_buffers',
+                schema=schema
+            )
+
+            SavePoints.save_layer_progress(f"{schema}_road_buffers_{datetime.now().date()}", True)
+
+            print(f'{schema} Road_buffers Loaded Successfully')
+
+        except Exception as e:
+
+            SavePoints.save_layer_progress(f"{schema}_road_buffers_{datetime.now().date()}", False)
+
+            print(e)
+
+            raise
+
+
     
