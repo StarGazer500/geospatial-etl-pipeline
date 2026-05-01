@@ -9,7 +9,7 @@ from etl_util import Extract_Transform_Load
 SUBCOMP_OPTIONAL_LAYERS = {
     'akwaaba_schema': ['protected_areas', 'unplantable_areas'],
     'buffalo_schema': ['unplantable_areas', 'firebreaks','protected_areas'],
-    'colobus_schema': ['road_buffers','protected_areas', 'water_buffers', 'firebreaks', 'unplantable_areas'],
+    'colobus_schema': ['road_buffers','protected_areas', 'firebreaks', 'unplantable_areas'],
 }
 
 
@@ -41,8 +41,7 @@ def run_etl_pipeline(schema, source_conn, target_conn):
             layers = [
                 # Extract_Transform_Load.load_leased_areas,
                 # Extract_Transform_Load.load_compartments,
-                Extract_Transform_Load.load_subcompartments,
-                
+                load_subcompartments,
                 # Extract_Transform_Load.load_rb_roads,
                 # Extract_Transform_Load.load_rb_assigned_psps,
                 # Extract_Transform_Load.load_rb_completed_psps,
@@ -54,7 +53,7 @@ def run_etl_pipeline(schema, source_conn, target_conn):
             layers = [
                 # Extract_Transform_Load.load_leased_areas,
                 # Extract_Transform_Load.load_compartments,
-                Extract_Transform_Load.load_subcompartments,
+                load_subcompartments,
                 # Extract_Transform_Load.load_field_mapped_farms,
                 # Extract_Transform_Load.load_rb_roads,
                 # Extract_Transform_Load.load_rb_assigned_psps,

@@ -261,37 +261,7 @@ class Extract_Transform_Load:
                 except Exception as e:
                     print(f'{schema} road_buffers skipped: {e}')
 
-            # --- Water Buffers (unplantable) ---
-            if 'water_buffers' in optional_layers:
-                print(f'{schema} loading water_buffers...')
-                try:
-                    water_buffer_query = f"""
-                    SELECT
-                      water_buffer_id,
-                      ROUND(CAST(ST_Area(ST_Transform(geom, 4326)::geography) / 10000.0 AS NUMERIC), 3) AS area_ha,
-                      geom
-                    FROM {schema}.water_buffers
-                    """
-                    water_buffers = DataManagement.execute_spatial_query(conn=source_conn, query=water_buffer_query)
-                    if not water_buffers.empty:
-                        water_buffers = water_buffers.rename(columns={'water_buffer_id': 'subcompartment_id', water_buffers.geometry.name: 'geom'})
-                        water_buffers = gpd.GeoDataFrame(water_buffers, geometry='geom', crs=water_buffers.crs)
-                        water_buffers['category'] = 'unplantable'
-                        water_buffers['subcategory'] = 'water_buffer'
-                        water_buffers['treatment'] = None
-                        water_buffers['planting_type'] = None
-                        water_buffers['year_planted'] = None
-                        water_buffers['plant_start_date'] = None
-                        water_buffers['lp_start_date'] = None
-                        water_buffers['sph'] = None
-                        water_buffers['compartment_id'] = None
-                        water_buffers['source_layer'] = 'water_buffers'
-                        frames.append(water_buffers[UNIFIED_COLS])
-                        print(f'{schema} water_buffers: {len(water_buffers)} records')
-                    else:
-                        print(f'{schema} water_buffers: 0 records found')
-                except Exception as e:
-                    print(f'{schema} water_buffers skipped: {e}')
+           
 
             # --- Firebreaks (unplantable) ---
             if 'firebreaks' in optional_layers:
@@ -452,7 +422,7 @@ class Extract_Transform_Load:
             DataManagement.save_spatial_data_to_postgres(
                 conn=target_conn,
                 data=source_data,
-                table_name='subcompartments',
+                table_name='subcompartment_stratum_on_lease',
                 schema=schema
             )
 
