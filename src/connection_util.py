@@ -9,6 +9,7 @@ class DatabaseConnection:
 
     val_conn = None
     target_conn = None
+    _target_pool = {}
 
     @staticmethod
     def _create_engine(host, database_name, port, username, password, db_type="database"):
@@ -71,19 +72,17 @@ class DatabaseConnection:
 
 
     @classmethod
-    def connect_to_target_postgis_database(cls,host,database_name,port,username,password):
+    def connect_to_target_postgis_database(cls, host, database_name, port, username, password):
         try:
-            if not cls.target_conn:
+            key = f"{host}:{port}/{database_name}"
+            if key not in cls._target_pool:
                 conn = DatabaseConnection._create_engine(
                     host, database_name, port,
                     username, password, "TARGET"
                 )
-                cls.target_conn = conn
-                print("Target database connection successful!")
-                return cls.target_conn
-            else:
-                print("Target database connection successful!")
-                return cls.target_conn
+                cls._target_pool[key] = conn
+            print("Target database connection successful!")
+            return cls._target_pool[key]
         except Exception as e:
             print(f'Error connecting to Target database: {e}')
             return None

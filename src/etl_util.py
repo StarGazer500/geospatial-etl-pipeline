@@ -5,6 +5,7 @@ import geopandas as gpd
 from data_management_util import DataManagement, read_test_data
 from validation_util import Validation
 from savepoints_util import SavePoints
+from fill_gaps import fill_gaps
 
 
 class Extract_Transform_Load:
@@ -317,7 +318,7 @@ class Extract_Transform_Load:
             return
 
         UNIFIED_COLS = [
-            'subcompartment_id', 'category', 'subcategory', 'treatment',
+            'lease_stratum_id', 'category', 'subcategory', 'treatment',
             'planting_type', 'year_planted', 'plant_start_date', 'lp_start_date',
             'area_ha', 'sph', 'compartment_id', 'source_layer', 'geom'
         ]
@@ -367,7 +368,7 @@ class Extract_Transform_Load:
                 subcomps['subcategory'] = subcomps['planting_status'].apply(
                     lambda x: 'planted' if str(x).lower() == 'planted' else 'planned_planting'
                 )
-                subcomps = subcomps.rename(columns={'treatment_type': 'treatment', subcomps.geometry.name: 'geom'})
+                subcomps = subcomps.rename(columns={'subcompartment_id': 'lease_stratum_id', 'treatment_type': 'treatment', subcomps.geometry.name: 'geom'})
                 subcomps = gpd.GeoDataFrame(subcomps, geometry='geom', crs=subcomps.crs)
                 subcomps['source_layer'] = 'subcompartments'
                 frames.append(subcomps[UNIFIED_COLS])
@@ -385,7 +386,7 @@ class Extract_Transform_Load:
                     """
                     road_buffers = DataManagement.execute_spatial_query(conn=source_conn, query=road_buffer_query)
                     if not road_buffers.empty:
-                        road_buffers = road_buffers.rename(columns={'road_buffer_id': 'subcompartment_id', road_buffers.geometry.name: 'geom'})
+                        road_buffers = road_buffers.rename(columns={'road_buffer_id': 'lease_stratum_id', road_buffers.geometry.name: 'geom'})
                         road_buffers = gpd.GeoDataFrame(road_buffers, geometry='geom', crs=road_buffers.crs)
                         road_buffers['category'] = 'unplantable'
                         road_buffers['subcategory'] = 'road_buffer'
@@ -419,7 +420,7 @@ class Extract_Transform_Load:
                     """
                     firebreaks = DataManagement.execute_spatial_query(conn=source_conn, query=firebreak_query)
                     if not firebreaks.empty:
-                        firebreaks = firebreaks.rename(columns={'firebreak_id': 'subcompartment_id', firebreaks.geometry.name: 'geom'})
+                        firebreaks = firebreaks.rename(columns={'firebreak_id': 'lease_stratum_id', firebreaks.geometry.name: 'geom'})
                         firebreaks = gpd.GeoDataFrame(firebreaks, geometry='geom', crs=firebreaks.crs)
                         firebreaks['category'] = 'unplantable'
                         firebreaks['subcategory'] = 'firebreak'
@@ -454,7 +455,7 @@ class Extract_Transform_Load:
                     unplantables = DataManagement.execute_spatial_query(conn=source_conn, query=unplantable_query)
                     if not unplantables.empty:
                         unplantables = unplantables.rename(columns={
-                            'unplantable_id': 'subcompartment_id',
+                            'unplantable_id': 'lease_stratum_id',
                             'damage_type': 'subcategory',
                             unplantables.geometry.name: 'geom'
                         })
@@ -487,10 +488,12 @@ class Extract_Transform_Load:
                     """
                     protected = DataManagement.execute_spatial_query(conn=source_conn, query=protected_query)
                     if not protected.empty:
-                        protected = protected.rename(columns={'protected_area_id': 'subcompartment_id', protected.geometry.name: 'geom'})
+                        protected = protected.rename(columns={'protected_area_id': 'lease_stratum_id', protected.geometry.name: 'geom'})
                         protected = gpd.GeoDataFrame(protected, geometry='geom', crs=protected.crs)
                         protected['category'] = 'plantable'
-                        protected['subcategory'] = 'protection'
+                        protected['subcategory'] = protected['area_ha'].apply(
+                            lambda x: 'Other areas' if x > 5 else 'protection'
+                        )
                         protected['treatment'] = None
                         protected['planting_type'] = None
                         protected['year_planted'] = None
@@ -562,6 +565,8 @@ class Extract_Transform_Load:
             except Exception:
                 pass
 
+      
+            # source_data = Validation.validate_and_fix_geometries(source_data)
             DataManagement.save_spatial_data_to_postgres(
                 conn=target_conn,
                 data=source_data,

@@ -15,6 +15,8 @@ SUBCOMP_OPTIONAL_LAYERS = {
 
 def run_etl_pipeline(schema, source_conn, target_conn):
     try:
+        target_conn['sync'].dispose()
+
         optional_layers = SUBCOMP_OPTIONAL_LAYERS.get(schema, [])
         load_all_layer_stratum_on_lease = partial(
             Extract_Transform_Load.load_all_layer_stratum_on_lease,

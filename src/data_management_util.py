@@ -60,11 +60,16 @@ class DataManagement():
 
         for attempt in range(1, max_retries + 2):
             try:
+                with conn['sync'].connect() as drop_conn:
+                    drop_conn.execute(text("SET LOCAL lock_timeout = '120s'"))
+                    drop_conn.execute(text(f'DROP TABLE IF EXISTS {full_table}'))
+                    drop_conn.commit()
+
                 data.to_postgis(
                     name=table_name,
                     con=conn['sync'],
                     schema=schema,
-                    if_exists='replace',
+                    if_exists='fail',
                     index=False
                 )
 
@@ -80,6 +85,7 @@ class DataManagement():
 
             except OperationalError as e:
                 if 'lock timeout' in str(e).lower() and attempt <= max_retries:
+                    conn['sync'].dispose()
                     print(f'Lock timeout on {full_table}, retrying in 5s (attempt {attempt}/{max_retries})...')
                     time.sleep(5)
                 else:
