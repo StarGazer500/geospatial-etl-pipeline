@@ -3,12 +3,15 @@ import time
 import pandas as pd
 import geopandas as gpd
 from sqlalchemy import text
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import OperationalError, IntegrityError
 
 
 
 
 class DataManagement():
+
+    # Set once before running setup_schemas.py: {'gis_viewer': 'SELECT', 'gis_update': 'SELECT, INSERT, UPDATE, DELETE, TRUNCATE'}
+    grant_roles: dict = {}
 
     @staticmethod
     def execute_spatial_query(conn, query, geom_col='geom'):
@@ -43,42 +46,89 @@ class DataManagement():
         with conn['sync'].connect() as connection:
             connection.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
             if schema:
-                connection.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
-            connection.commit()
+                try:
+                    connection.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
+                    connection.commit()
+                except IntegrityError:
+                    connection.rollback()
+            else:
+                connection.commit()
 
 
 
+
+    @staticmethod
+    def _coerce_dtypes(data, conn, table_name, schema):
+        """Coerce DataFrame columns to match the target PostgreSQL table's column types."""
+        schema_filter = f"AND table_schema = '{schema}'" if schema else ""
+        with conn['sync'].connect() as c:
+            rows = c.execute(text(f"""
+                SELECT column_name, data_type
+                FROM information_schema.columns
+                WHERE table_name = '{table_name}' {schema_filter}
+                ORDER BY ordinal_position
+            """)).fetchall()
+        col_types = {row[0]: row[1].lower() for row in rows}
+
+        for col in data.columns:
+            pg_type = col_types.get(col)
+            if not pg_type:
+                continue
+            try:
+                if pg_type in ('integer', 'bigint', 'smallint'):
+                    data[col] = pd.to_numeric(data[col], errors='coerce').round().astype('Int64')
+                elif pg_type == 'date':
+                    series = data[col]
+                    if pd.api.types.is_float_dtype(series) or pd.api.types.is_integer_dtype(series):
+                        # Year-only numeric values (e.g. 2026.0 stored as double precision)
+                        data[col] = series.apply(
+                            lambda x: pd.Timestamp(year=int(x), month=1, day=1) if pd.notna(x) else pd.NaT
+                        )
+                    else:
+                        data[col] = pd.to_datetime(series, errors='coerce')
+                elif pg_type in ('numeric', 'double precision', 'real'):
+                    data[col] = pd.to_numeric(data[col], errors='coerce')
+            except Exception as ex:
+                print(f'  Warning: could not coerce column "{col}" to {pg_type}: {ex}')
+        return data
 
     @staticmethod
     def save_spatial_data_to_postgres(conn, data, table_name, schema=None, target_crs=4326, max_retries=2):
         if target_crs is not None:
             data = data.to_crs(target_crs)
 
-        DataManagement.create_target_schema_if_not_exists(conn, schema)
-
         full_table = f'"{schema}"."{table_name}"' if schema else f'"{table_name}"'
+        schema_filter = f"table_schema = '{schema}' AND " if schema else ""
 
         for attempt in range(1, max_retries + 2):
             try:
-                with conn['sync'].connect() as drop_conn:
-                    drop_conn.execute(text("SET LOCAL lock_timeout = '120s'"))
-                    drop_conn.execute(text(f'DROP TABLE IF EXISTS {full_table}'))
-                    drop_conn.commit()
+                with conn['sync'].connect() as check_conn:
+                    result = check_conn.execute(text(f"""
+                        SELECT EXISTS (
+                            SELECT 1 FROM information_schema.tables
+                            WHERE {schema_filter}table_name = '{table_name}'
+                        )
+                    """))
+                    table_exists = result.scalar()
+
+                if not table_exists:
+                    print(f'{full_table} does not exist — run setup_schemas.py first')
+                    return
+
+                data = DataManagement._coerce_dtypes(data, conn, table_name, schema)
+
+                with conn['sync'].connect() as trunc_conn:
+                    trunc_conn.execute(text("SET LOCAL lock_timeout = '120s'"))
+                    trunc_conn.execute(text(f'TRUNCATE TABLE {full_table}'))
+                    trunc_conn.commit()
 
                 data.to_postgis(
                     name=table_name,
                     con=conn['sync'],
                     schema=schema,
-                    if_exists='fail',
-                    index=False
+                    if_exists='append',
+                    index=False,
                 )
-
-                with conn['sync'].connect() as connection:
-                    connection.execute(text(f"""
-                        ALTER TABLE {full_table}
-                        ADD COLUMN id SERIAL PRIMARY KEY;
-                    """))
-                    connection.commit()
 
                 print(f'Successfully saved {len(data)} records to {schema}.{table_name}')
                 return

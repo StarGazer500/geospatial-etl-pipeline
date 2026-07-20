@@ -1,5 +1,6 @@
 
 from sqlalchemy import text, create_engine
+from sqlalchemy.engine import URL
 
 
 
@@ -16,10 +17,15 @@ class DatabaseConnection:
         if not all([host, database_name, port, username, password]):
             raise ValueError(f"Missing required {db_type} environment variables")
 
-        connection_base = f'{username}:{password}@{host}:{port}/{database_name}'
-
         sync_engine = create_engine(
-            f'postgresql://{connection_base}',
+            URL.create(
+                drivername='postgresql',
+                username=username,
+                password=password,
+                host=host,
+                port=int(port),
+                database=database_name,
+            ),
             pool_size=3,
             max_overflow=0,
             pool_timeout=60,

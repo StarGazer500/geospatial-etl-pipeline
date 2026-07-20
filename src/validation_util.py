@@ -139,23 +139,26 @@ class Validation:
         GeoDataFrame with all valid geometries
         """
 
-        # Remove null and empty geometries
-        gdf = gdf[gdf.geometry.notna() & ~gdf.geometry.is_empty].copy()
+        gdf = gdf.copy()
+        geom_col = gdf.geometry.name
 
-        # Check if fixing is needed
-        invalid_count = (~gdf.geometry.is_valid).sum()
+        null_count = gdf.geometry.isna().sum()
+        empty_count = (~gdf.geometry.isna() & gdf.geometry.is_empty).sum()
+        if null_count or empty_count:
+            if verbose:
+                print(f"Warning: dropping {null_count} null and {empty_count} empty geometries")
+            gdf = gdf[gdf.geometry.notna() & ~gdf.geometry.is_empty].copy()
+
+        invalid_mask = ~gdf.geometry.is_valid
+        invalid_count = invalid_mask.sum()
 
         if invalid_count > 0:
             if verbose:
                 print(f"Fixing {invalid_count} invalid geometries...")
-
-            geom_col = gdf.geometry.name
-            gdf[geom_col] = gdf.geometry.make_valid()
-
-            # Remove any that couldn't be fixed
-            gdf = gdf[gdf.geometry.is_valid].copy()
+            gdf.loc[invalid_mask, geom_col] = gdf.loc[invalid_mask, geom_col].make_valid()
 
         if verbose:
-            print(f"All geometries valid: {gdf.geometry.is_valid.all()}")
+            still_invalid = (~gdf.geometry.is_valid).sum()
+            print(f"All geometries valid: {still_invalid == 0} ({still_invalid} remaining invalid)")
 
         return gdf

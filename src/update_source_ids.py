@@ -22,6 +22,7 @@ import psycopg2
 import geopandas as gpd
 from collections import defaultdict
 from sqlalchemy import create_engine, text
+from sqlalchemy.engine import URL
 
 try:
     from dotenv import load_dotenv
@@ -38,8 +39,15 @@ PORT     = os.getenv('SOURCE_PORT',          '5433')
 USER     = os.getenv('SOURCE_USERNAME',      'postgres')
 PASSWORD = os.getenv('SOURCE_PASSWORD',      '0549martin')
 
-PSYCOPG2_DSN    = f"host={HOST} dbname={DB} port={PORT} user={USER} password={PASSWORD}"
-SQLALCHEMY_URL  = f"postgresql://{USER}:{PASSWORD}@{HOST}:{PORT}/{DB}"
+PSYCOPG2_DSN   = f"host={HOST} dbname='{DB}' port={PORT} user={USER} password={PASSWORD}"
+SQLALCHEMY_URL = URL.create(
+    drivername='postgresql',
+    username=USER,
+    password=PASSWORD,
+    host=HOST,
+    port=int(PORT),
+    database=DB,
+)
 
 # ---------------------------------------------------------------------------
 # Layer configuration
@@ -55,6 +63,9 @@ SCHEMA_LAYERS = {
     'akwaaba_schema': ['protected_areas', 'unplantable_areas'],
     'buffalo_schema': ['unplantable_areas', 'firebreaks', 'protected_areas'],
     'colobus_schema': ['road_buffers', 'protected_areas', 'firebreaks', 'unplantable_areas'],
+    'buffalo_schema_baseline': ['unplantable_areas', 'firebreaks', 'protected_areas'],
+    'buffalo_schema_operational': ['unplantable_areas', 'firebreaks', 'protected_areas'],
+
 }
 
 
@@ -112,6 +123,10 @@ def assign_compartment_ids(layer_gdf, comp_gdf):
     projected_crs = left.estimate_utm_crs()
     left  = left.to_crs(projected_crs)
     right = right.to_crs(projected_crs)
+
+    # Fix any self-intersecting rings before overlay
+    left  = left.set_geometry(left.geometry.buffer(0))
+    right = right.set_geometry(right.geometry.buffer(0))
 
     overlay = gpd.overlay(left, right, how='intersection', keep_geom_type=False)
     overlay['_area'] = overlay.geometry.area
