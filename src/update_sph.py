@@ -27,7 +27,7 @@ DB       = os.getenv('SOURCE_DATABASE_NAME')
 USER     = os.getenv('SOURCE_USERNAME')
 PASSWORD = os.getenv('SOURCE_PASSWORD')
 
-SCHEMAS = ['akwaaba_schema', 'buffalo_schema_baseline','buffalo_schema_operational', 'colobus_schema']
+SCHEMAS = ['akwaaba_schema', 'buffalo_schema', 'colobus_schema']
 
 
 def update_subcompartment_sph(engine, schema):

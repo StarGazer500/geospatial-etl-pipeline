@@ -31,29 +31,33 @@ class Extract_Transform_Load:
 
         try:
             query = None
-            if source_schema in ('buffalo_schema_baseline','buffalo_schema_operational'):
+            if source_schema == 'buffalo_schema':
                 query = f"""
-                    SELECT lease_id, geom, geom_status, lease_status, year_leased,
-                           ST_Area(ST_Transform(geom, 4326)::geography) / 10000 AS area_ha,
+                    SELECT parcel_id,lease_id,legacy_lease_id, geom, geom_status, lease_status, year_leased,
+                           ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000)::numeric, 2) AS area_ha_wgs84,
+                           ROUND((ST_Area(geom) / 10000)::numeric, 2) AS area_ha_utm29,
                            link_to_lease_document, date_registered
                     FROM (
                         SELECT
-                            lease_id,
+                            parcel_id,
+                            MAX(lease_id) AS lease_id,
+                            MAX(legacy_lease_id) AS legacy_lease_id,
                             ST_Multi(ST_CollectionExtract(ST_Union(geom), 3)) AS geom,
                             MAX(geom_status) AS geom_status,
                             MAX(lease_status) AS lease_status,
                             MIN(CASE WHEN year_leased::TEXT ~ '^\\d+$' THEN year_leased::TEXT::INTEGER END) AS year_leased,
                             MAX(link_to_lease_document) AS link_to_lease_document,
-                            MIN(date_registered) AS date_registered
+                            MIN(date_registered) AS date_registered,
+                            MAX(comments) AS comments
                         FROM {source_schema}.leased_areas
-                        GROUP BY lease_id
+                        GROUP BY parcel_id
                     ) sub;
                 """
             else:
                 if source_schema=='akwaaba_schema':
                      query = f"""
-                        SELECT lease_id, geom, geom_status, lease_status, year_leased,year_requested,agreement_type,
-                            ST_Area(ST_Transform(geom, 4326)::geography) / 10000 AS area_ha,
+                        SELECT lease_id, geom, geom_status, lease_status, year_leased,year_requested,agreement_type,phase,
+                            ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000)::numeric, 2) AS area_ha,
                             link_to_lease_document
                         FROM (
                             SELECT
@@ -62,6 +66,7 @@ class Extract_Transform_Load:
                                 MAX(geom_status) AS geom_status,
                                 MAX(lease_status) AS lease_status,
                                 MAX(agreement_type) AS agreement_type,
+                                MAX(CASE WHEN phase::TEXT ~ '^\\d+$' THEN phase::TEXT::INTEGER END) AS phase,
                                 MIN(CASE WHEN year_leased::TEXT ~ '^\\d+$' THEN year_leased::TEXT::INTEGER END) AS year_leased,
                                 MIN(CASE WHEN year_requested::TEXT ~ '^\\d+$' THEN year_requested::TEXT::INTEGER END) AS year_requested,
                                 MAX(link_to_lease_document) AS link_to_lease_document
@@ -72,7 +77,7 @@ class Extract_Transform_Load:
                 else:
                     query = f"""
                         SELECT lease_id, geom, geom_status, lease_status, year_leased,
-                            ST_Area(ST_Transform(geom, 4326)::geography) / 10000 AS area_ha,
+                            ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000)::numeric, 2) AS area_ha,
                             link_to_lease_document
                         FROM (
                             SELECT
@@ -131,7 +136,7 @@ class Extract_Transform_Load:
             # if schema == "akwaaba_schema":
             query = f"""
                 SELECT compartment_id, geom, lease_id,
-                       ST_Area(ST_Transform(geom, 4326)::geography) / 10000 AS area_ha,
+                       ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000)::numeric, 2) AS area_ha,
                        n_psp_target, year_created
                 FROM (
                     SELECT
@@ -150,7 +155,7 @@ class Extract_Transform_Load:
             #       lease_id,
             #       compartment_id,
             #       geom,
-            #       ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000)::numeric, 3) as area_ha,
+            #       ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000)::numeric, 2) as area_ha,
             #       n_psp_target,
             #       year_created
             #     FROM {schema}.compartments
@@ -202,7 +207,7 @@ class Extract_Transform_Load:
                 SELECT
                   subcompartment_id,
                   geom,
-                  ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000)::numeric, 3) as area_ha,
+                  ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000)::numeric, 2) as area_ha,
                   compartment_id,
                   treatment_type,
                   planting_status,
@@ -232,7 +237,7 @@ class Extract_Transform_Load:
             #     SELECT
             #       subcompartment_id,
             #       geom,
-            #       ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000)::numeric, 3) as area_ha,
+            #       ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000)::numeric, 2) as area_ha,
             #       compartment_id,
             #       treatment_type,
             #       planting_status,
@@ -244,40 +249,40 @@ class Extract_Transform_Load:
             #     FROM {schema}.subcompartments
             #     """
 
-            source_test_data = read_test_data(r"C:\Users\LENOVO\Downloads\test_subcomps_akw_buf_new3.gpkg", source_schema.split('_')[0])
+            # Test data merge disabled — the gpkg rows collided with live db rows
+            # (e.g. 'test1'/'test2' existed in both), and it never had rows for
+            # every schema (no 'colobus' project), which left schemas without a
+            # match permanently unrefreshed since the early-return skipped the
+            # truncate entirely. Querying the source db alone instead.
+            # source_test_data = read_test_data(r"C:\Users\LENOVO\Downloads\test_subcomps_akw_buf_new3.gpkg", source_schema.split('_')[0])
             source_db_data = DataManagement.execute_spatial_query(
                 conn=source_conn,
                 query=query,
             )
 
-            if source_db_data.empty or source_test_data.empty:
-                print(f'{source_schema} subcompartments: source db data and test data mismatch')
-                return
-
-            geom_col = source_db_data.geometry.name
-            if source_test_data.geometry.name != geom_col:
-                source_test_data = source_test_data.rename_geometry(geom_col)
-
-            if source_test_data.crs != source_db_data.crs:
-                source_test_data = source_test_data.to_crs(source_db_data.crs)
-
-            from shapely.geometry import MultiPolygon as ShapelyMultiPolygon
-            for df in (source_db_data, source_test_data):
-                df[geom_col] = df[geom_col].apply(
-                    lambda g: ShapelyMultiPolygon([g]) if g is not None and g.geom_type == 'Polygon' else g
-                )
-
-            source_data = gpd.GeoDataFrame(
-                pd.concat([source_db_data, source_test_data], ignore_index=True),
-                crs=source_db_data.crs,
-                geometry=geom_col
-            )
-
-            # else:
-            #     source_data = DataManagement.execute_spatial_query(
-            #         conn=source_conn,
-            #         query=query,
+            # if source_db_data.empty or source_test_data.empty:
+            #     print(f'{source_schema} subcompartments: source db data and test data mismatch')
+            #     return
+            #
+            # geom_col = source_db_data.geometry.name
+            # if source_test_data.geometry.name != geom_col:
+            #     source_test_data = source_test_data.rename_geometry(geom_col)
+            #
+            # if source_test_data.crs != source_db_data.crs:
+            #     source_test_data = source_test_data.to_crs(source_db_data.crs)
+            #
+            # from shapely.geometry import MultiPolygon as ShapelyMultiPolygon
+            # for df in (source_db_data, source_test_data):
+            #     df[geom_col] = df[geom_col].apply(
+            #         lambda g: ShapelyMultiPolygon([g]) if g is not None and g.geom_type == 'Polygon' else g
             #     )
+            #
+            # source_data = gpd.GeoDataFrame(
+            #     pd.concat([source_db_data, source_test_data], ignore_index=True),
+            #     crs=source_db_data.crs,
+            #     geometry=geom_col
+            # )
+            source_data = source_db_data
 
             if source_data.empty:
                 print("No data found")
@@ -305,8 +310,6 @@ class Extract_Transform_Load:
 
             raise
 
-
-
     def load_unplantable_areas(source_schema,target_schema, source_conn, target_conn):
 
         # is_loaded = SavePoints.get_layer_progress(f"{schema}_unplantable_areas_{datetime.now().date()}")
@@ -320,7 +323,7 @@ class Extract_Transform_Load:
               compartment_id,
               unplantable_id,
               geom,
-              ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000)::numeric, 3) as area_ha,
+              ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000)::numeric, 2) as area_ha,
               damage_type
             FROM {source_schema}.unplantable_areas
             """
@@ -374,7 +377,7 @@ class Extract_Transform_Load:
         UNIFIED_COLS = [
             'lease_stratum_id', 'category', 'subcategory', 'treatment',
             'planting_type', 'year_planted', 'plant_start_date', 'lp_start_date',
-            'area_ha', 'sph', 'compartment_id', 'source_layer', 'silviculture_operation_status', 'geom'
+            'area_ha', 'sph', 'compartment_id', 'source_layer', 'silviculture_operation_status', 'recipe', 'geom'
         ]
 
         try:
@@ -386,7 +389,7 @@ class Extract_Transform_Load:
                 SELECT
                   subcompartment_id,
                   ST_Multi(ST_CollectionExtract(ST_Union(geom), 3)) as geom,
-                  ST_Area(ST_Transform(ST_Multi(ST_CollectionExtract(ST_Union(geom), 3)), 4326)::geography) / 10000.0 AS area_ha,
+                  ROUND((ST_Area(ST_Transform(ST_Multi(ST_CollectionExtract(ST_Union(geom), 3)), 4326)::geography) / 10000.0)::numeric, 2) AS area_ha,
                   MAX(compartment_id) AS compartment_id,
                   MAX(treatment_type) AS treatment_type,
                   MAX(sph) AS sph,
@@ -403,7 +406,7 @@ class Extract_Transform_Load:
             #     SELECT
             #       subcompartment_id,
             #       geom,
-            #       ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000)::numeric, 3) as area_ha,
+            #       ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000)::numeric, 2) as area_ha,
             #       compartment_id,
             #       treatment_type,
             #       planting_status,
@@ -420,12 +423,17 @@ class Extract_Transform_Load:
             if not subcomps.empty:
                 subcomps['category'] = 'plantable'
                 subcomps['subcategory'] = subcomps['planting_status'].apply(
-                    lambda x: 'planted' if str(x).lower() == 'planted' else 'planned_planting'
+                    lambda x: 'planted' if str(x).lower() == 'planted'
+                    else 'planted but protected' if str(x).lower() == 'planted but protected'
+                    else 'planned_planting'
                 )
                 subcomps = subcomps.rename(columns={'subcompartment_id': 'lease_stratum_id', 'treatment_type': 'treatment', subcomps.geometry.name: 'geom'})
                 subcomps = gpd.GeoDataFrame(subcomps, geometry='geom', crs=subcomps.crs)
                 subcomps['source_layer'] = 'subcompartments'
-                subcomps['silviculture_operation_status'] = 'active'
+                subcomps['silviculture_operation_status'] = subcomps['subcategory'].apply(
+                    lambda x: 'inactive' if x == 'planted but protected' else 'active'
+                )
+                subcomps['recipe'] = None
                 frames.append(subcomps[UNIFIED_COLS])
 
             # --- Road Buffers (unplantable) ---
@@ -435,7 +443,7 @@ class Extract_Transform_Load:
                     road_buffer_query = f"""
                     SELECT
                       road_buffer_id,
-                      ST_Area(ST_Transform(geom, 4326)::geography) / 10000.0 AS area_ha,
+                      ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000.0)::numeric, 2) AS area_ha,
                       geom
                     FROM {source_schema}.road_buffers
                     """
@@ -454,6 +462,7 @@ class Extract_Transform_Load:
                         road_buffers['compartment_id'] = None
                         road_buffers['source_layer'] = 'road_buffers'
                         road_buffers['silviculture_operation_status'] = 'inactive'
+                        road_buffers['recipe'] = None
                         frames.append(road_buffers[UNIFIED_COLS])
                         print(f'{source_schema} road_buffers: {len(road_buffers)} records')
                     else:
@@ -470,7 +479,7 @@ class Extract_Transform_Load:
                     firebreak_query = f"""
                     SELECT
                       firebreak_id,
-                      ST_Area(ST_Transform(geom, 4326)::geography) / 10000.0 AS area_ha,
+                      ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000.0)::numeric, 2) AS area_ha,
                       geom
                     FROM {source_schema}.firebreaks
                     """
@@ -489,6 +498,7 @@ class Extract_Transform_Load:
                         firebreaks['compartment_id'] = None
                         firebreaks['source_layer'] = 'firebreaks'
                         firebreaks['silviculture_operation_status'] = 'inactive'
+                        firebreaks['recipe'] = None
                         frames.append(firebreaks[UNIFIED_COLS])
                         print(f'{source_schema} firebreaks: {len(firebreaks)} records')
                     else:
@@ -504,7 +514,7 @@ class Extract_Transform_Load:
                     SELECT
                       unplantable_id,
                       compartment_id,
-                      ST_Area(ST_Transform(geom, 4326)::geography) / 10000.0 AS area_ha,
+                      ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000.0)::numeric, 2) AS area_ha,
                       damage_type,
                       geom
                     FROM {source_schema}.unplantable_areas
@@ -526,6 +536,7 @@ class Extract_Transform_Load:
                         unplantables['sph'] = None
                         unplantables['source_layer'] = 'unplantable_areas'
                         unplantables['silviculture_operation_status'] = 'inactive'
+                        unplantables['recipe'] = None
                         frames.append(unplantables[UNIFIED_COLS])
                         print(f'{source_schema} unplantable_areas: {len(unplantables)} records')
                     else:
@@ -540,7 +551,7 @@ class Extract_Transform_Load:
                     protected_query = f"""
                     SELECT
                       protected_area_id,
-                      ST_Area(ST_Transform(geom, 4326)::geography) / 10000.0 AS area_ha,
+                      ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000.0)::numeric, 2) AS area_ha,
                       geom
                     FROM {source_schema}.protected_areas
                     """
@@ -561,6 +572,7 @@ class Extract_Transform_Load:
                         protected['compartment_id'] = None
                         protected['source_layer'] = 'protected_areas'
                         protected['silviculture_operation_status'] = 'inactive'
+                        protected['recipe'] = None
                         frames.append(protected[UNIFIED_COLS])
                         print(f'{source_schema} protected_areas: {len(protected)} records')
                     else:
@@ -691,7 +703,7 @@ class Extract_Transform_Load:
               compartment_id,
               farm_id,
               geom,
-              ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000)::numeric, 3) as area_ha,
+              ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000)::numeric, 2) as area_ha,
               date_mapped,
               mapped_by
             FROM {source_schema}.field_mapped_farms
@@ -800,8 +812,12 @@ class Extract_Transform_Load:
                     road_id,
                     geom,
                     road_treatment_status,
-                    length_km,
-                    date_created
+                    ROUND((ST_Length(ST_Transform(geom, 4326)::geography) / 1000)::numeric, 2) AS length_km,
+                    date_created,
+                    compartment_id,
+                    status,
+                    build_year,
+                    area
                     FROM {source_schema}.rb_roads
                     """
             else:
@@ -812,8 +828,12 @@ class Extract_Transform_Load:
                     road_id,
                     geom,
                     road_treatment_status,
-                    length_km,
-                    date_created
+                    ROUND((ST_Length(ST_Transform(geom, 4326)::geography) / 1000)::numeric, 2) AS length_km,
+                    date_created,
+                    compartment_id,
+                    status,
+                    build_year,
+                    area
                     FROM {source_schema}.rb_roads
                     """
             source_data = DataManagement.execute_spatial_query(
@@ -959,7 +979,7 @@ class Extract_Transform_Load:
               firebreak_id,
               lease_id,
               CAST(perimeter AS DOUBLE PRECISION) AS perimeter,
-              ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000)::numeric, 3) as area_ha,
+              ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000)::numeric, 2) as area_ha,
               geom
             FROM {source_schema}.firebreaks
             """
@@ -1006,7 +1026,7 @@ class Extract_Transform_Load:
             SELECT
               protected_area_id,
               landcover,
-              ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000)::numeric, 3) as area_ha,
+              ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000)::numeric, 2) as area_ha,
               geom
             FROM {source_schema}.protected_areas
             """
@@ -1052,7 +1072,7 @@ class Extract_Transform_Load:
             query = f"""
             SELECT
               road_buffer_id,
-              ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000)::numeric, 3) as area_ha,
+              ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000)::numeric, 2) as area_ha,
               geom
             FROM {source_schema}.road_buffers
             """
@@ -1087,6 +1107,62 @@ class Extract_Transform_Load:
             raise
 
 
-    
+    def load_culverts(source_schema,target_schema, source_conn, target_conn):
 
-    
+        # is_loaded = SavePoints.get_layer_progress(f"{schema}_culverts_{datetime.now().date()}")
+        # if is_loaded:
+        #     print(f'{schema} culverts  already loaded')
+        #     return
+
+        try:
+            query = f"""
+            SELECT
+              road_id,
+              culvert_id,
+              culvert_type,
+              legacy_culvert_id,
+              pipe_diameter_mm,
+              pipe_length_m,
+              no_of_pipes,
+              pipe_type,
+              headwalls,
+              status,
+              build_year,
+              date_maintained,
+              compartment_id,
+              geom
+            FROM {source_schema}.culverts
+            """
+            source_data = DataManagement.execute_spatial_query(
+                conn=source_conn,
+                query=query,
+            )
+
+            if source_data.empty:
+                print("No data found")
+                return
+
+            source_data = Validation.validate_and_fix_geometries(source_data)
+
+            DataManagement.save_spatial_data_to_postgres(
+                conn=target_conn,
+                data=source_data,
+                table_name='culverts',
+                schema=target_schema
+            )
+
+            # SavePoints.save_layer_progress(f"{schema}_culverts_{datetime.now().date()}", True)
+
+            print(f'{source_schema} Culverts into {target_schema} Loaded Successfully')
+
+        except Exception as e:
+
+            # SavePoints.save_layer_progress(f"{schema}_culverts_{datetime.now().date()}", False)
+
+            print(e)
+
+            raise
+
+
+
+

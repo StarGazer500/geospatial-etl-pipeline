@@ -20,7 +20,7 @@ Usage:
 import os
 import psycopg2
 import geopandas as gpd
-from collections import defaultdict
+from collections import defaultdict, Counter
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import URL
 
@@ -61,11 +61,8 @@ LAYER_CONFIG = {
 
 SCHEMA_LAYERS = {
     'akwaaba_schema': ['protected_areas', 'unplantable_areas'],
-    'buffalo_schema': ['unplantable_areas', 'firebreaks', 'protected_areas'],
+    'buffalo_schema': ['road_buffers','unplantable_areas', 'firebreaks', 'protected_areas'],
     'colobus_schema': ['road_buffers', 'protected_areas', 'firebreaks', 'unplantable_areas'],
-    'buffalo_schema_baseline': ['unplantable_areas', 'firebreaks', 'protected_areas'],
-    'buffalo_schema_operational': ['unplantable_areas', 'firebreaks', 'protected_areas'],
-
 }
 
 
@@ -153,9 +150,25 @@ def generate_new_ids(layer_gdf, prefix):
         comp = row['compartment_id']
         counters[comp] += 1
         new_ids.append(f"{prefix}-{comp}-{counters[comp]}")
+
+    dupes = [id_ for id_, count in Counter(new_ids).items() if count > 1]
+    if dupes:
+        raise ValueError(f"generate_new_ids produced duplicate ids: {dupes}")
+
     layer_gdf = layer_gdf.copy()
     layer_gdf['new_id'] = new_ids
     return layer_gdf
+
+
+def check_unique(engine, schema, table, id_field):
+    """Return any id_field values with more than one row after the update."""
+    with engine.connect() as conn:
+        return conn.execute(text(f"""
+            SELECT "{id_field}", COUNT(*)
+            FROM "{schema}"."{table}"
+            GROUP BY "{id_field}"
+            HAVING COUNT(*) > 1
+        """)).fetchall()
 
 
 def update_id_field(dsn, schema, table, id_field, ctid_to_id):
@@ -212,6 +225,12 @@ def process_layer(engine, schema, table):
     ctid_to_id = dict(zip(layer_gdf['ctid'], layer_gdf['new_id']))
 
     update_id_field(PSYCOPG2_DSN, schema, table, id_field, ctid_to_id)
+
+    dupes = check_unique(engine, schema, table, id_field)
+    if dupes:
+        print(f"    WARNING: {id_field} still has {len(dupes)} duplicate value(s) in {schema}.{table}: {dupes[:5]}")
+    else:
+        print(f"    {id_field} verified unique in {schema}.{table}")
 
 
 def main():

@@ -2,13 +2,14 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import partial
 
 from etl_util_chameleon import Extract_Transform_Load
+from update_leased_areas_tracker import update_leased_areas_tracker
 
 
 # Specify which optional tables are available per schema.
 # Allowed values: 'road_buffers', 'water_buffers', 'firebreaks', 'unplantable_areas', 'protected_areas'
 SUBCOMP_OPTIONAL_LAYERS = {
     'akwaaba_schema': ['protected_areas', 'unplantable_areas'],
-    'buffalo_schema': ['unplantable_areas', 'firebreaks','protected_areas'],
+    'buffalo_schema': ['road_buffers','unplantable_areas', 'firebreaks','protected_areas'],
     'colobus_schema': ['road_buffers','protected_areas', 'firebreaks', 'unplantable_areas'],
 }
 
@@ -17,8 +18,7 @@ def run_chameleon_etl_pipeline(source_schema,target_schema, source_conn, target_
     try:
         target_conn['sync'].dispose()
 
-        base_schema = source_schema.replace('_baseline', '').replace('_operational', '')
-        optional_layers = SUBCOMP_OPTIONAL_LAYERS.get(base_schema, [])
+        optional_layers = SUBCOMP_OPTIONAL_LAYERS.get(source_schema, [])
         load_all_layer_stratum_on_lease = partial(
             Extract_Transform_Load.load_all_layer_stratum_on_lease,
             optional_layers=optional_layers
@@ -26,7 +26,7 @@ def run_chameleon_etl_pipeline(source_schema,target_schema, source_conn, target_
         load_all_layer_stratum_on_lease.__name__ = 'load_all_layer_stratum_on_lease'
 
         # Akwaaba does not have firebreaks
-        if target_schema in ( 'akwaaba_schema','akwaaba_schema_baseline','akwaaba_schema_operational' ) :
+        if target_schema == 'akwaaba_schema':
             layers = [
                 Extract_Transform_Load.load_leased_areas,
                 Extract_Transform_Load.load_compartments,
@@ -38,11 +38,12 @@ def run_chameleon_etl_pipeline(source_schema,target_schema, source_conn, target_
                 # Extract_Transform_Load.load_rb_assigned_psps,
                 # Extract_Transform_Load.load_rb_completed_psps,
                 # Extract_Transform_Load.load_protected_areas,
+                Extract_Transform_Load.load_culverts,
                 load_all_layer_stratum_on_lease
             ]
 
         # Buffalo currently does not have field mapped farms and intercropped farms
-        elif target_schema in ( 'buffalo_schema','buffalo_schema_baseline','buffalo_schema_operational'):
+        elif target_schema == 'buffalo_schema':
             layers = [
                 Extract_Transform_Load.load_leased_areas,
                 Extract_Transform_Load.load_compartments,
@@ -54,11 +55,11 @@ def run_chameleon_etl_pipeline(source_schema,target_schema, source_conn, target_
                 Extract_Transform_Load.load_firebreaks,
                 # Extract_Transform_Load.load_protected_areas,
                 load_all_layer_stratum_on_lease
-                
+
             ]
 
         # Colobus currently does not have intercropped areas
-        elif target_schema in ( 'colobus_schema','colobus_schema_baseline','colobus_schema_operational'):
+        elif target_schema == 'colobus_schema':
             layers = [
                 Extract_Transform_Load.load_leased_areas,
                 Extract_Transform_Load.load_compartments,
@@ -71,6 +72,7 @@ def run_chameleon_etl_pipeline(source_schema,target_schema, source_conn, target_
                 Extract_Transform_Load.load_firebreaks,
                 # Extract_Transform_Load.load_protected_areas,
                 # Extract_Transform_Load.load_road_buffers,
+                Extract_Transform_Load.load_culverts,
                 load_all_layer_stratum_on_lease
 
             ]
@@ -85,6 +87,12 @@ def run_chameleon_etl_pipeline(source_schema,target_schema, source_conn, target_
             }
             for future in as_completed(futures):
                 future.result()
+
+        # Rejoins buffalo_schema.leased_areas with lease_tracker_schema on the
+        # chameleon target — must run after load_leased_areas has refreshed
+        # leased_areas above, not concurrently with it.
+        if target_schema == 'buffalo_schema':
+            update_leased_areas_tracker()
 
     except Exception:
         raise

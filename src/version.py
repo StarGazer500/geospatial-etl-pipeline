@@ -36,8 +36,7 @@ SRC_PASSWORD = os.environ["SOURCE_PASSWORD"]
 SOURCE_SCHEMAS = [
     "akwaaba_schema",
     "colobus_schema",
-    "buffalo_schema_baseline",
-    "buffalo_schema_operational"
+    "buffalo_schema"
 ]
 
 MAX_CONCURRENT = 4

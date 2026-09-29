@@ -157,6 +157,13 @@ class Validation:
                 print(f"Fixing {invalid_count} invalid geometries...")
             gdf.loc[invalid_mask, geom_col] = gdf.loc[invalid_mask, geom_col].make_valid()
 
+        duplicate_mask = gdf.geometry.apply(lambda g: g.wkb).duplicated()
+        duplicate_count = duplicate_mask.sum()
+        if duplicate_count > 0:
+            if verbose:
+                print(f"Warning: dropping {duplicate_count} duplicate geometries")
+            gdf = gdf[~duplicate_mask].copy()
+
         if verbose:
             still_invalid = (~gdf.geometry.is_valid).sum()
             print(f"All geometries valid: {still_invalid == 0} ({still_invalid} remaining invalid)")
