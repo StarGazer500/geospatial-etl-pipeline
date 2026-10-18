@@ -1,34 +1,21 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from functools import partial
 
 
 
+from setup_schemas import project_schema
 from etl_util_project_level import Extract_Transform_Load
 
 
-# Specify which optional tables are available per schema.
-# Allowed values: 'road_buffers', 'water_buffers', 'firebreaks', 'unplantable_areas', 'protected_areas'
-SUBCOMP_OPTIONAL_LAYERS = {
-    'akwaaba_schema': ['protected_areas', 'unplantable_areas'],
-    'buffalo_schema': ['road_buffers','unplantable_areas', 'firebreaks','protected_areas'],
-    'colobus_schema': ['road_buffers','protected_areas', 'firebreaks', 'unplantable_areas'],
-}
-
-
 def run_project_level_etl_pipeline(source_schema, target_schema, source_conn, target_conn):
-    
+
     try:
         target_conn['sync'].dispose()
 
-        optional_layers = SUBCOMP_OPTIONAL_LAYERS.get(source_schema, [])
-        load_all_layer_stratum_on_lease = partial(
-            Extract_Transform_Load.load_all_layer_stratum_on_lease,
-            optional_layers=optional_layers
-        )
-        load_all_layer_stratum_on_lease.__name__ = 'load_all_layer_stratum_on_lease'
+        # 'buffalo_schema_draft' loads the same layers as 'buffalo_schema'
+        project = project_schema(target_schema)
 
         # Akwaaba does not have firebreaks
-        if target_schema =='akwaaba_schema' :
+        if project == 'akwaaba_schema':
             layers = [
                 Extract_Transform_Load.load_leased_areas,
                 Extract_Transform_Load.load_compartments,
@@ -41,11 +28,11 @@ def run_project_level_etl_pipeline(source_schema, target_schema, source_conn, ta
                 # Extract_Transform_Load.load_rb_completed_psps,
                 # Extract_Transform_Load.load_protected_areas,
                 Extract_Transform_Load.load_culverts,
-                load_all_layer_stratum_on_lease
+                Extract_Transform_Load.load_lease_areas_stratum,
             ]
 
         # Buffalo currently does not have field mapped farms and intercropped farms
-        elif target_schema == 'buffalo_schema':
+        elif project == 'buffalo_schema':
             layers = [
                 Extract_Transform_Load.load_leased_areas,
                 Extract_Transform_Load.load_compartments,
@@ -56,12 +43,12 @@ def run_project_level_etl_pipeline(source_schema, target_schema, source_conn, ta
                 # Extract_Transform_Load.load_rb_completed_psps,
                 # Extract_Transform_Load.load_firebreaks,
                 # Extract_Transform_Load.load_protected_areas,
-                load_all_layer_stratum_on_lease
-                
+                Extract_Transform_Load.load_lease_areas_stratum,
+
             ]
 
         # Colobus currently does not have intercropped areas
-        elif target_schema == 'colobus_schema':
+        elif project == 'colobus_schema':
             layers = [
                 Extract_Transform_Load.load_leased_areas,
                 Extract_Transform_Load.load_compartments,
@@ -75,7 +62,7 @@ def run_project_level_etl_pipeline(source_schema, target_schema, source_conn, ta
                 # Extract_Transform_Load.load_protected_areas,
                 # Extract_Transform_Load.load_road_buffers,
                 Extract_Transform_Load.load_culverts,
-                load_all_layer_stratum_on_lease
+                Extract_Transform_Load.load_lease_areas_stratum,
 
             ]
 

@@ -103,6 +103,8 @@ class Extract_Transform_Load:
                 return
 
             source_data = Validation.validate_and_fix_geometries(source_data)
+            source_data['geom'] = source_data['geom'].apply(_to_multipolygon)
+            source_data = source_data[source_data['geom'].notna()].copy()
 
             DataManagement.save_spatial_data_to_postgres(
                 conn=target_conn,
@@ -172,6 +174,8 @@ class Extract_Transform_Load:
                 return
 
             source_data = Validation.validate_and_fix_geometries(source_data)
+            source_data['geom'] = source_data['geom'].apply(_to_multipolygon)
+            source_data = source_data[source_data['geom'].notna()].copy()
 
             DataManagement.save_spatial_data_to_postgres(
                 conn=target_conn,
@@ -194,102 +198,54 @@ class Extract_Transform_Load:
 
 
     def load_plantable_areas(source_schema,target_schema, source_conn, target_conn):
-
-        # is_loaded = SavePoints.get_layer_progress(f"{schema}_subcompartments_{datetime.now().date()}")
-        # if is_loaded:
-        #     print(f'{schema} subcompartments  already loaded')
-        #     return
+        """
+        Sourced from lease_areas_stratum (planting_type IS NOT NULL — source_layer
+        is not reliable, e.g. buffalo_schema has rows with a NULL source_layer
+        that are genuine subcompartments), instead of querying the raw
+        subcompartments table. Restructured back to the subcompartments target
+        column set.
+        """
 
         try:
-            query = None
-
-            # if schema == 'buffalo_schema':
             query = f"""
                 SELECT
-                  subcompartment_id,
+                  lease_stratum_id AS subcompartment_id,
                   geom,
-                  ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000)::numeric, 2) as area_ha,
+                  ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000)::numeric, 2) AS area_ha,
                   compartment_id,
-                  treatment_type,
-                  planting_status,
+                  treatment AS treatment_type,
+                  CASE WHEN subcategory = 'planned_planting' THEN 'not planted' ELSE subcategory END AS planting_status,
                   year_planted,
                   planting_type,
-                  lp_start_date,
-                  plant_start_date,
-                  sph
-                FROM (
-                  SELECT
-                    subcompartment_id,
-                    ST_Multi(ST_CollectionExtract(ST_Union(geom), 3)) as geom,
-                    MAX(compartment_id) AS compartment_id,
-                    MAX(treatment_type) AS treatment_type,
-                    MAX(planting_status) AS planting_status,
-                    MIN(CASE WHEN year_planted::TEXT ~ '^\\d+$' THEN year_planted::TEXT::INTEGER END) AS year_planted,
-                    MAX(planting_type) AS planting_type,
-                    MIN(lp_start_date) AS lp_start_date,
-                    MIN(plant_start_date) AS plant_start_date,
-                    MAX(sph) AS sph
-                  FROM {source_schema}.subcompartments
-                  GROUP BY subcompartment_id
-                ) sub;
+                  lp_start_date::date AS lp_start_date,
+                  plant_start_date::date AS plant_start_date,
+                  CASE
+                    WHEN planting_type ~ '^\\s*\\d+\\.?\\d*\\s*[xX]\\s*\\d+\\.?\\d*\\s*$' THEN
+                      ROUND(
+                        10000.0
+                        / NULLIF(SPLIT_PART(REGEXP_REPLACE(TRIM(planting_type), '\\s*[xX]\\s*', ' x ', 'g'), ' x ', 1)::NUMERIC, 0)
+                        / NULLIF(SPLIT_PART(REGEXP_REPLACE(TRIM(planting_type), '\\s*[xX]\\s*', ' x ', 'g'), ' x ', 2)::NUMERIC, 0)
+                      )
+                    ELSE NULL
+                  END AS sph,
+                  recipe,
+                  operational_year
+                FROM {source_schema}.lease_areas_stratum
+                WHERE planting_type IS NOT NULL
                 """
-            # else:
-            #     query = f"""
-            #     SELECT
-            #       subcompartment_id,
-            #       geom,
-            #       ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000)::numeric, 2) as area_ha,
-            #       compartment_id,
-            #       treatment_type,
-            #       planting_status,
-            #       year_planted,
-            #       planting_type,
-            #       lp_start_date,
-            #       plant_start_date,
-            #       sph
-            #     FROM {schema}.subcompartments
-            #     """
 
-            # Test data merge disabled — the gpkg rows collided with live db rows
-            # (e.g. 'test1'/'test2' existed in both), and it never had rows for
-            # every schema (no 'colobus' project), which left schemas without a
-            # match permanently unrefreshed since the early-return skipped the
-            # truncate entirely. Querying the source db alone instead.
-            # source_test_data = read_test_data(r"C:\Users\LENOVO\Downloads\test_subcomps_akw_buf_new3.gpkg", source_schema.split('_')[0])
-            source_db_data = DataManagement.execute_spatial_query(
+            source_data = DataManagement.execute_spatial_query(
                 conn=source_conn,
                 query=query,
             )
-
-            # if source_db_data.empty or source_test_data.empty:
-            #     print(f'{source_schema} subcompartments: source db data and test data mismatch')
-            #     return
-            #
-            # geom_col = source_db_data.geometry.name
-            # if source_test_data.geometry.name != geom_col:
-            #     source_test_data = source_test_data.rename_geometry(geom_col)
-            #
-            # if source_test_data.crs != source_db_data.crs:
-            #     source_test_data = source_test_data.to_crs(source_db_data.crs)
-            #
-            # from shapely.geometry import MultiPolygon as ShapelyMultiPolygon
-            # for df in (source_db_data, source_test_data):
-            #     df[geom_col] = df[geom_col].apply(
-            #         lambda g: ShapelyMultiPolygon([g]) if g is not None and g.geom_type == 'Polygon' else g
-            #     )
-            #
-            # source_data = gpd.GeoDataFrame(
-            #     pd.concat([source_db_data, source_test_data], ignore_index=True),
-            #     crs=source_db_data.crs,
-            #     geometry=geom_col
-            # )
-            source_data = source_db_data
 
             if source_data.empty:
                 print("No data found")
                 return
 
             source_data = Validation.validate_and_fix_geometries(source_data)
+            source_data['geom'] = source_data['geom'].apply(_to_multipolygon)
+            source_data = source_data[source_data['geom'].notna()].copy()
 
             DataManagement.save_spatial_data_to_postgres(
                 conn=target_conn,
@@ -298,13 +254,9 @@ class Extract_Transform_Load:
                 schema=target_schema,
             )
 
-            # SavePoints.save_layer_progress(f"{schema}_subcompartments_{datetime.now().date()}", True)
-
             print(f'{source_schema} plantable_Areas into {target_schema} Loaded Successfully')
 
         except Exception as e:
-
-            # SavePoints.save_layer_progress(f"{schema}_subcompartments_{datetime.now().date()}", False)
 
             print(e)
 
@@ -359,6 +311,89 @@ class Extract_Transform_Load:
             raise
 
 
+
+
+    def load_lease_areas_stratum(source_schema,target_schema, source_conn, target_conn):
+        """
+        Straight source -> target sync of the local lease_areas_stratum table —
+        no merging of individual layers, no snapping. The source table is now
+        managed directly, replacing the old per-layer merge approach below
+        (load_all_layer_stratum_on_lease, kept for reference/rollback but no
+        longer called by the pipeline).
+
+        Protected-area rows (category='plantable', subcategory in 'protection'/
+        'Other areas') have their subcategory reclassified from the freshly
+        computed area_ha rather than trusted as-is: <=5ha -> 'protection',
+        >5ha -> 'Other areas'.
+        """
+
+        try:
+            query = f"""
+            SELECT
+              lease_stratum_id,
+              geom,
+              category,
+              CASE
+                WHEN category = 'plantable' AND subcategory IN ('protection', 'Other areas')
+                  THEN CASE WHEN computed_area_ha > 5 THEN 'Other areas' ELSE 'protection' END
+                ELSE subcategory
+              END AS subcategory,
+              treatment,
+              planting_type,
+              year_planted,
+              plant_start_date::date AS plant_start_date,
+              lp_start_date::date AS lp_start_date,
+              computed_area_ha AS area_ha,
+              CASE
+                WHEN planting_type ~ '^\\s*\\d+\\.?\\d*\\s*[xX]\\s*\\d+\\.?\\d*\\s*$' THEN
+                  ROUND(
+                    10000.0
+                    / NULLIF(SPLIT_PART(REGEXP_REPLACE(TRIM(planting_type), '\\s*[xX]\\s*', ' x ', 'g'), ' x ', 1)::NUMERIC, 0)
+                    / NULLIF(SPLIT_PART(REGEXP_REPLACE(TRIM(planting_type), '\\s*[xX]\\s*', ' x ', 'g'), ' x ', 2)::NUMERIC, 0)
+                  )
+                ELSE NULL
+              END AS sph,
+              compartment_id,
+              source_layer,
+              silviculture_operation_status,
+              recipe,
+              operational_year,
+              initial_recipe,
+              initial_plant_start_date::date AS initial_plant_start_date,
+              comments
+            FROM (
+              SELECT *,
+                ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000)::numeric, 2) AS computed_area_ha
+              FROM {source_schema}.lease_areas_stratum
+            ) sub
+            """
+            source_data = DataManagement.execute_spatial_query(
+                conn=source_conn,
+                query=query,
+            )
+
+            if source_data.empty:
+                print("No data found")
+                return
+
+            source_data = Validation.validate_and_fix_geometries(source_data)
+            source_data['geom'] = source_data['geom'].apply(_to_multipolygon)
+            source_data = source_data[source_data['geom'].notna()].copy()
+
+            DataManagement.save_spatial_data_to_postgres(
+                conn=target_conn,
+                data=source_data,
+                table_name='lease_areas_stratum',
+                schema=target_schema,
+            )
+
+            print(f'{source_schema} Lease Areas Stratum into {target_schema} Loaded Successfully')
+
+        except Exception as e:
+
+            print(e)
+
+            raise
 
 
     def load_all_layer_stratum_on_lease(source_schema,target_schema, source_conn, target_conn, optional_layers=None):
@@ -968,21 +1003,25 @@ class Extract_Transform_Load:
 
 
     def load_firebreaks(source_schema,target_schema, source_conn, target_conn):
-
-        # is_loaded = SavePoints.get_layer_progress(f"{schema}_firebreaks_{datetime.now().date()}")
-        # if is_loaded:
-        #     print(f'{schema} firebreaks  already loaded')
-        #     return
+        """
+        Sourced from lease_areas_stratum (subcategory='firebreak' — more reliable
+        than source_layer), instead of querying the raw firebreaks table.
+        lease_id is derived via compartment_id (the raw source no longer carries
+        it here); perimeter is computed fresh since it
+        was never populated on the raw firebreaks table anyway.
+        """
 
         try:
             query = f"""
             SELECT
-              firebreak_id,
-              lease_id,
-              CAST(perimeter AS DOUBLE PRECISION) AS perimeter,
-              ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000)::numeric, 2) as area_ha,
-              geom
-            FROM {source_schema}.firebreaks
+              ls.lease_stratum_id AS firebreak_id,
+              c.lease_id,
+              ROUND((ST_Perimeter(ST_Transform(ls.geom, 4326)::geography))::numeric, 2) AS perimeter,
+              ROUND((ST_Area(ST_Transform(ls.geom, 4326)::geography) / 10000)::numeric, 2) AS area_ha,
+              ls.geom
+            FROM {source_schema}.lease_areas_stratum ls
+            LEFT JOIN {source_schema}.compartments c ON ls.compartment_id = c.compartment_id
+            WHERE ls.subcategory = 'firebreak'
             """
             source_data = DataManagement.execute_spatial_query(
                 conn=source_conn,

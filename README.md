@@ -1,5 +1,7 @@
 # ETL Pipeline
 
+> **Running an update?** Follow [RUNBOOK.md](RUNBOOK.md): push to the draft, review, approve, promote.
+
 A geospatial ETL (Extract, Transform, Load) pipeline for transforming PostGIS data from raw to transformed and cleaned data. Runs with thread-based parallel processing, savepoint progress tracking, and automatic geometry validation.
 
 ## Project Structure

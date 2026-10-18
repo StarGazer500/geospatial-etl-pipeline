@@ -4,6 +4,7 @@ Edit SCHEMA_TABLE_SCHEMAS below to adjust column names and types before running.
 The ETL pipeline (update mode) will then TRUNCATE + INSERT into these tables.
 """
 import os
+import re
 import sys
 
 from dotenv import load_dotenv
@@ -47,6 +48,8 @@ _SUBCOMPARTMENTS = [
     ('lp_start_date',       'DATE'),
     ('plant_start_date',    'DATE'),
     ('sph',                 'INTEGER'),
+    ('recipe',              'CHARACTER VARYING'),
+    ('operational_year',    'INTEGER'),
 ]
 
 _UNPLANTABLE_AREAS = [
@@ -111,6 +114,10 @@ _LEASE_AREAS_STRATUM = [
     ('source_layer',                    'CHARACTER VARYING'),
     ('silviculture_operation_status',   'CHARACTER VARYING'),
     ('recipe',                          'CHARACTER VARYING'),
+    ('operational_year',                'INTEGER'),
+    ('initial_recipe',                  'CHARACTER VARYING'),
+    ('initial_plant_start_date',        'DATE'),
+    ('comments',                        'CHARACTER VARYING'),
 ]
 
 # rb_roads: akwaaba/colobus have no road_type; buffalo schemas have road_type
@@ -247,8 +254,51 @@ TABLE_ID_COLUMN_OVERRIDES = {
     ('buffalo_schema', 'leased_areas'): 'parcel_id',
 }
 
+# Draft (staging) schemas: the ETL loads "<schema>_draft"; approved drafts are
+# promoted to "<schema>" by draft_review.promote(). Created by an admin, owned by gis_create.
+DRAFT_SUFFIX = '_draft'
+
+# Layers on each target database
+CHAMELEON_TABLES = {'rb_roads', 'leased_areas', 'subcompartments', 'lease_areas_stratum', 'compartments', 'firebreaks', 'culverts'}
+PROJECT_LEVEL_TABLES = {'rb_roads', 'leased_areas', 'subcompartments', 'lease_areas_stratum', 'compartments', 'culverts'}
+
+
+def project_schema(schema):
+    """The final schema a schema belongs to: 'buffalo_schema_draft' -> 'buffalo_schema'."""
+    return schema.removesuffix(DRAFT_SUFFIX)
+
+
+def id_column(schema, table):
+    """The layer's natural id column; drafts use the same id as their final schema."""
+    return TABLE_ID_COLUMN_OVERRIDES.get((project_schema(schema), table), TABLE_ID_COLUMNS.get(table))
+
 
 # ── Core functions ─────────────────────────────────────────────────────────────
+
+# Postgres takes an exclusive lock on the table for ALTER TABLE … ADD COLUMN IF NOT EXISTS
+# and CREATE INDEX IF NOT EXISTS even when nothing needs creating, which blocks (or
+# deadlocks with) anyone reading the table. So check first and only run what is missing.
+
+def add_missing_columns(connection, schema, table, columns):
+    """Adds the (name, type) columns the table doesn't have yet; returns the names added."""
+    existing = {row[0] for row in connection.execute(text(
+        'SELECT column_name FROM information_schema.columns WHERE table_schema = :s AND table_name = :t'
+    ), {'s': schema, 't': table})}
+    added = []
+    for col, dtype in columns:
+        if col not in existing:
+            connection.exec_driver_sql(f'ALTER TABLE "{schema}"."{table}" ADD COLUMN "{col}" {dtype}')
+            added.append(col)
+    return added
+
+
+def ensure_index(connection, schema, index_name, ddl):
+    """Runs the CREATE INDEX statement ddl only if the index doesn't exist yet."""
+    exists = connection.execute(text(
+        'SELECT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = :s AND indexname = :i)'
+    ), {'s': schema, 'i': index_name}).scalar()
+    if not exists:
+        connection.exec_driver_sql(ddl)
 
 def create_tables_for_schema(conn, schema, table_schemas=None):
     if table_schemas is None:
@@ -280,11 +330,8 @@ def create_tables_for_schema(conn, schema, table_schemas=None):
                 """)).fetchall()
             }
 
+            add_missing_columns(connection, schema, table_name, columns)
             for col, dtype in columns:
-                # Add column if missing
-                connection.execute(text(
-                    f'ALTER TABLE {full_table} ADD COLUMN IF NOT EXISTS "{col}" {dtype}'
-                ))
                 # Alter type if it changed (skip geometry — requires special casting)
                 if 'geometry' not in dtype.lower() and col in existing:
                     target = dtype.lower().split('(')[0].strip()
@@ -292,37 +339,77 @@ def create_tables_for_schema(conn, schema, table_schemas=None):
                         connection.execute(text(
                             f'ALTER TABLE {full_table} ALTER COLUMN "{col}" TYPE {dtype} USING "{col}"::{dtype}'
                         ))
-                        print(f'    Altered {col}: {existing[col]} → {dtype}')
+                        print(f'    Altered {col}: {existing[col]} -> {dtype}')
+
+            # Discover every sequence backing a column default on this table —
+            # not just the expected "{table}_id_seq". Manually recreated/imported
+            # tables can have leftover id columns tied to oddly-named sequences
+            # (e.g. "colobus_stratum_merged_id_0_seq") that still need granting,
+            # or none at all if there's no SERIAL-backed column.
+            defaults = connection.execute(text(
+                "SELECT column_default FROM information_schema.columns "
+                "WHERE table_schema = :schema AND table_name = :table "
+                "AND column_default LIKE 'nextval(%'"
+            ), {'schema': schema, 'table': table_name}).scalars().all()
+            sequence_names = sorted({
+                match.group(1)
+                for default in defaults
+                for match in [re.search(r"nextval\('(?:[\w\"]+\.)?\"?([\w]+)\"?'", default)]
+                if match
+            })
 
             for role, privileges in GRANT_ROLES.items():
                 connection.execute(text(f'GRANT {privileges} ON {full_table} TO {role}'))
-                connection.execute(text(
-                    f'GRANT USAGE, SELECT ON SEQUENCE "{schema}"."{table_name}_id_seq" TO {role}'
-                ))
+                for seq in sequence_names:
+                    connection.execute(text(
+                        f'GRANT USAGE, SELECT ON SEQUENCE "{schema}"."{seq}" TO {role}'
+                    ))
+            if not sequence_names:
+                print(f'    No sequence-backed columns on {table_name} — skipped sequence grants')
+            else:
+                print(f'    Granted on sequences: {", ".join(sequence_names)}')
             connection.commit()
         print(f'  Ready: {full_table}')
 
         # Enforce uniqueness on the layer's natural id (e.g. culvert_id, road_id) —
         # run in its own connection so a table with pre-existing duplicate ids
         # can't abort the create/alter/grant work above or the tables after it.
-        id_column = TABLE_ID_COLUMN_OVERRIDES.get((schema, table_name), TABLE_ID_COLUMNS.get(table_name))
-        if id_column and any(col == id_column for col, _ in columns):
-            index_name = f'{table_name}_{id_column}_key'
+        key = id_column(schema, table_name)
+        if key and any(col == key for col, _ in columns):
+            index_name = f'{table_name}_{key}_key'
             with conn['sync'].connect() as connection:
                 try:
-                    connection.execute(text(
-                        f'CREATE UNIQUE INDEX IF NOT EXISTS "{index_name}" ON {full_table} ("{id_column}")'
-                    ))
+                    ensure_index(connection, schema, index_name,
+                                 f'CREATE UNIQUE INDEX "{index_name}" ON {full_table} ("{key}")')
                     connection.commit()
-                    print(f'    Unique index ensured on {id_column}')
+                    print(f'    Unique index ensured on {key}')
                 except Exception as e:
                     connection.rollback()
-                    print(f'    Could not enforce uniqueness on {id_column} (existing duplicates?): {e}')
+                    print(f'    Could not enforce uniqueness on {key} (existing duplicates?): {e}')
 
 
 # ── Run ────────────────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description='Create/update tables, drafts and history. Safe to re-run.',
+        epilog='Examples:  setup_schemas.py                         (everything)\n'
+               '           setup_schemas.py akwaaba                 (one project, all parts)\n'
+               '           setup_schemas.py akwaaba --only history   (one project, history functions only)',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument('projects', nargs='*', choices=[s.removesuffix('_schema') for s in SCHEMA_TABLE_SCHEMAS],
+                        help='projects to set up (default: all)')
+    parser.add_argument('--only', nargs='+', choices=['live', 'draft', 'history'], default=['live', 'draft', 'history'],
+                        help='parts to set up (default: all). live = live tables on both databases; '
+                             'draft = draft tables and review lock; history = history tables and comparison functions')
+    args = parser.parse_args()
+    schemas = {s: t for s, t in SCHEMA_TABLE_SCHEMAS.items()
+               if not args.projects or s.removesuffix('_schema') in args.projects}
+    print(f'Setting up {", ".join(schemas)}: {", ".join(args.only)}')
+
     chameleon_conn = DatabaseConnection.connect_to_target_postgis_database(
         host=os.getenv('CHAMELEON_TARGET_HOST'),
         database_name=os.getenv('CHAMELEON_TARGET_DATABASE_NAME'),
@@ -331,22 +418,40 @@ if __name__ == '__main__':
         password=os.getenv('GIS_CREATE_PASSWORD'),
     )
 
-    project_conn = DatabaseConnection.connect_to_target_postgis_database(
-        host=os.getenv('PROJECT_LEVEL_TARGET_HOST'),
-        database_name=os.getenv('PROJECT_LEVEL_TARGET_DATABASE_NAME'),
-        port=os.getenv('PROJECT_LEVEL_TARGET_PORT'),
-        username=os.getenv('GIS_CREATE_USERNAME'),
-        password=os.getenv('GIS_CREATE_PASSWORD'),
-    )
+    if 'live' in args.only:
+        project_conn = DatabaseConnection.connect_to_target_postgis_database(
+            host=os.getenv('PROJECT_LEVEL_TARGET_HOST'),
+            database_name=os.getenv('PROJECT_LEVEL_TARGET_DATABASE_NAME'),
+            port=os.getenv('PROJECT_LEVEL_TARGET_PORT'),
+            username=os.getenv('GIS_CREATE_USERNAME'),
+            password=os.getenv('GIS_CREATE_PASSWORD'),
+        )
+        for schema, table_schemas in schemas.items():
+            print(f'\n=== {schema} ===')
+            chameleon_tables = {t: c for t, c in table_schemas.items() if t in CHAMELEON_TABLES}
+            project_tables   = {t: c for t, c in table_schemas.items() if t in PROJECT_LEVEL_TABLES}
+            create_tables_for_schema(chameleon_conn, schema, chameleon_tables)
+            create_tables_for_schema(project_conn,   schema, project_tables)
 
-    CHAMELEON_TABLES = {'rb_roads', 'leased_areas', 'subcompartments', 'lease_areas_stratum', 'compartments', 'firebreaks', 'culverts'}
-    PROJECT_LEVEL_TABLES = {'rb_roads', 'leased_areas','subcompartments', 'lease_areas_stratum', 'compartments', 'culverts'}
+    # Draft schemas (chameleon target only) — same tables as the final schema.
+    # The schemas themselves are created by an admin (see RUNBOOK.md); skipped until they exist.
+    if 'draft' in args.only:
+        from draft_review import create_review_objects, schema_exists
+        for schema, table_schemas in schemas.items():
+            draft = schema + DRAFT_SUFFIX
+            print(f'\n=== {draft} ===')
+            if not schema_exists(chameleon_conn, draft):
+                print(f'  {draft} does not exist yet — ask an admin to create it (RUNBOOK.md, step 1). Skipped.')
+                continue
+            create_tables_for_schema(chameleon_conn, draft, {t: c for t, c in table_schemas.items() if t in CHAMELEON_TABLES})
+            create_review_objects(chameleon_conn, schema)
 
-    for schema, table_schemas in SCHEMA_TABLE_SCHEMAS.items():
-        print(f'\n=== {schema} ===')
-        chameleon_tables = {t: c for t, c in table_schemas.items() if t in CHAMELEON_TABLES}
-        project_tables   = {t: c for t, c in table_schemas.items() if t in PROJECT_LEVEL_TABLES}
-        create_tables_for_schema(chameleon_conn, schema, chameleon_tables)
-        create_tables_for_schema(project_conn,   schema, project_tables)
+    # Change history lives on the chameleon target only, in "<schema>_history".
+    # After the drafts: the history's <layer>_pending() functions read them.
+    if 'history' in args.only:
+        from change_history import create_history_objects
+        for schema in schemas:
+            print(f'\n=== {schema}_history ===')
+            create_history_objects(chameleon_conn, schema)
 
     print('\nSchema setup complete.')

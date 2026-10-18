@@ -97,6 +97,13 @@ class DataManagement():
         if target_crs is not None:
             data = data.to_crs(target_crs)
 
+        # Target geometry columns are 2D: drop Z (e.g. from GPS/KML imports) instead of
+        # failing the load with "Geometry has Z dimension but column does not"
+        has_z = data.geometry.has_z
+        if has_z.any():
+            data = data.set_geometry(data.geometry.force_2d())
+            print(f'{schema}.{table_name}: dropped Z from {int(has_z.sum())} of {len(data)} geometries')
+
         full_table = f'"{schema}"."{table_name}"' if schema else f'"{table_name}"'
         schema_filter = f"table_schema = '{schema}' AND " if schema else ""
 

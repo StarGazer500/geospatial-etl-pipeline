@@ -184,7 +184,7 @@ def update_id_field(dsn, schema, table, id_field, ctid_to_id):
             )
             updated += cur.rowcount
         conn.commit()
-        print(f"    Updated {updated} row(s)  →  {schema}.{table}.{id_field}")
+        print(f"    Updated {updated} row(s)  ->  {schema}.{table}.{id_field}")
     except Exception:
         conn.rollback()
         raise

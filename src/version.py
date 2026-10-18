@@ -11,6 +11,7 @@ Restore example:
 """
 
 import os
+import re
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -68,10 +69,17 @@ def geometry_columns_for(engine, schema, table):
         return [r[0] for r in rows]
 
 
+def safe_filename(table):
+    """Table names can contain path-separator characters (e.g. 'Z/M Dropped'),
+    which os.path.join would otherwise treat as subdirectories."""
+    return re.sub(r'[\\/]', '_', table)
+
+
 def backup_table(engine, schema, table, out_dir):
     label = f"{schema}.{table}"
     try:
         geom_cols = geometry_columns_for(engine, schema, table)
+        file_name = f"{safe_filename(table)}.parquet"
 
         if geom_cols:
             geom_col = geom_cols[0]
@@ -80,14 +88,14 @@ def backup_table(engine, schema, table, out_dir):
                 engine,
                 geom_col=geom_col,
             )
-            out_path = os.path.join(out_dir, f"{table}.parquet")
+            out_path = os.path.join(out_dir, file_name)
             gdf.to_parquet(out_path, index=False)
-            print(f"  OK [spatial] {label}  ({len(gdf)} rows -> {table}.parquet)")
+            print(f"  OK [spatial] {label}  ({len(gdf)} rows -> {file_name})")
         else:
             df = pd.read_sql(f'SELECT * FROM "{schema}"."{table}"', engine)
-            out_path = os.path.join(out_dir, f"{table}.parquet")
+            out_path = os.path.join(out_dir, file_name)
             df.to_parquet(out_path, index=False)
-            print(f"  OK [table]   {label}  ({len(df)} rows -> {table}.parquet)")
+            print(f"  OK [table]   {label}  ({len(df)} rows -> {file_name})")
 
         return True
 

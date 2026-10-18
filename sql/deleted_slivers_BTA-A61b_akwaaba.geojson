@@ -1,0 +1,169 @@
+{
+ "type": "FeatureCollection",
+ "crs": {
+  "type": "name",
+  "properties": {
+   "name": "EPSG:4326"
+  }
+ },
+ "features": [
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "MultiPolygon",
+    "coordinates": [
+     [
+      [
+       [
+        -2.620858656,
+        6.977491933
+       ],
+       [
+        -2.62424601,
+        6.977552347
+       ],
+       [
+        -2.62424601,
+        6.977552374
+       ],
+       [
+        -2.624237816,
+        6.977552207
+       ],
+       [
+        -2.62423712,
+        6.977552195
+       ],
+       [
+        -2.620884581,
+        6.97749467
+       ],
+       [
+        -2.620858997,
+        6.977494228
+       ],
+       [
+        -2.620858656,
+        6.977491933
+       ]
+      ]
+     ]
+    ]
+   },
+   "properties": {
+    "id": null,
+    "fid": 1168,
+    "sph": 40,
+    "area": null,
+    "id_0": 1175,
+    "id_1": 2074,
+    "id_2": 2481,
+    "path": null,
+    "layer": null,
+    "recipe": "R4",
+    "status": null,
+    "area_ha": 18.94,
+    "road_id": null,
+    "category": "plantable",
+    "comments": null,
+    "condition": null,
+    "length_km": null,
+    "treatment": "restoration",
+    "build_year": null,
+    "road_class": null,
+    "subcategory": "planned_planting",
+    "date_created": null,
+    "source_layer": null,
+    "year_planted": 2027,
+    "lp_start_date": null,
+    "planting_type": "100 x 2.5",
+    "compartment_id": "BTA-A-61",
+    "initial_recipe": null,
+    "lease_stratum_id": "BTA-A61b",
+    "operational_year": 2027,
+    "plant_start_date": null,
+    "road_treatment_status": null,
+    "initial_plant_start_date": null,
+    "silviculture_operation_status": "active",
+    "area_ha_deleted": 0.0047
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "MultiPolygon",
+    "coordinates": [
+     [
+      [
+       [
+        -2.620655324,
+        6.977488307
+       ],
+       [
+        -2.620803915,
+        6.977490957
+       ],
+       [
+        -2.620804262,
+        6.977493288
+       ],
+       [
+        -2.620662356,
+        6.977490855
+       ],
+       [
+        -2.620656499,
+        6.977490759
+       ],
+       [
+        -2.620655576,
+        6.977490741
+       ],
+       [
+        -2.620655324,
+        6.977488307
+       ]
+      ]
+     ]
+    ]
+   },
+   "properties": {
+    "id": null,
+    "fid": 1168,
+    "sph": 40,
+    "area": null,
+    "id_0": 1175,
+    "id_1": 2074,
+    "id_2": 2482,
+    "path": null,
+    "layer": null,
+    "recipe": "R4",
+    "status": null,
+    "area_ha": 18.94,
+    "road_id": null,
+    "category": "plantable",
+    "comments": null,
+    "condition": null,
+    "length_km": null,
+    "treatment": "restoration",
+    "build_year": null,
+    "road_class": null,
+    "subcategory": "planned_planting",
+    "date_created": null,
+    "source_layer": null,
+    "year_planted": 2027,
+    "lp_start_date": null,
+    "planting_type": "100 x 2.5",
+    "compartment_id": "BTA-A-61",
+    "initial_recipe": null,
+    "lease_stratum_id": "BTA-A61b",
+    "operational_year": 2027,
+    "plant_start_date": null,
+    "road_treatment_status": null,
+    "initial_plant_start_date": null,
+    "silviculture_operation_status": "active",
+    "area_ha_deleted": 0.0004
+   }
+  }
+ ]
+}
