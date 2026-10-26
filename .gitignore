@@ -6,3 +6,4 @@ notebook/land_prep_start_date.ipynb
 cloud-sql-proxy.exe
 data-pipeline-1-464218-672f6ca7d311.json
 .env
+exports/

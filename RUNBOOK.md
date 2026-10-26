@@ -18,6 +18,19 @@ Projects: `akwaaba_schema`, `buffalo_schema`, `colobus_schema`. Tracked layers:
 leased areas, compartments, subcompartments, lease area stratum, roads, firebreaks,
 culverts (each project has the ones it uses).
 
+**Buffalo leased areas** do not come from the local database: the push downloads
+the *Export as GPKG* file from Rainforest Builder (ESG → Land Leasing) into
+`exports/leased_areas_<date>_<time>.gpkg` on every run, loads that, and deletes the previous export.
+Each download is also copied to the **local** database as `buffalo_schema.leased_areas_tracker`
+(every parcel that has a geometry, with stage, community, chiefdom, district and family) for offline use, and merged
+into the local `buffalo_schema.leased_areas` by `parcel_id`: the website's lease ids, statuses,
+dates and geometry overwrite the local ones, new parcels are added, and lease document links,
+comments, agreement type, phase and year requested are kept.
+It needs `RB_EMAIL` and `RB_PASSWORD` in `.env`, an account on the Buffalo
+organisation, and once: `pip install -r requirements.txt` then `playwright install chromium`.
+To load a file you already downloaded, set `RB_LEASED_AREAS_GPKG=<path>`.
+Download only: `python src/download_leased_areas.py` (`--headed` to watch the browser).
+
 ---
 
 ## 1. One-time setup

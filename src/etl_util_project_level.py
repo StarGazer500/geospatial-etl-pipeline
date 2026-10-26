@@ -5,6 +5,7 @@ from shapely.geometry import MultiPolygon as _MP
 
 from data_management_util import DataManagement, read_test_data
 from validation_util import Validation
+from download_leased_areas import get_leased_areas_gpkg, read_leased_areas_gpkg
 
 
 def _to_multipolygon(g):
@@ -30,30 +31,13 @@ class Extract_Transform_Load:
         #     return
 
         try:
-            query = None
             if source_schema == 'buffalo_schema':
-                query = f"""
-                    SELECT parcel_id,lease_id,legacy_lease_id, geom, geom_status, lease_status, year_leased,
-                           ROUND((ST_Area(ST_Transform(geom, 4326)::geography) / 10000)::numeric, 2) AS area_ha_wgs84,
-                           ROUND((ST_Area(geom) / 10000)::numeric, 2) AS area_ha_utm29,
-                           link_to_lease_document, date_registered
-                    FROM (
-                        SELECT
-                            parcel_id,
-                            MAX(lease_id) AS lease_id,
-                            MAX(legacy_lease_id) AS legacy_lease_id,
-                            ST_Multi(ST_CollectionExtract(ST_Union(geom), 3)) AS geom,
-                            MAX(geom_status) AS geom_status,
-                            MAX(lease_status) AS lease_status,
-                            MIN(CASE WHEN year_leased::TEXT ~ '^\\d+$' THEN year_leased::TEXT::INTEGER END) AS year_leased,
-                            MAX(link_to_lease_document) AS link_to_lease_document,
-                            MIN(date_registered) AS date_registered,
-                            MAX(comments) AS comments
-                        FROM {source_schema}.leased_areas
-                        GROUP BY parcel_id
-                    ) sub;
-                """
+                # Buffalo leased areas are maintained in Rainforest Builder, not the source
+                # database: load its GPKG export (one row per parcel_id)
+                source_data = read_leased_areas_gpkg(get_leased_areas_gpkg())
+                source_data = source_data.drop(columns='comments')  # not on the project-level table
             else:
+                query = None
                 if source_schema=='akwaaba_schema':
                      query = f"""
                         SELECT lease_id, geom, geom_status, lease_status, year_leased,year_requested,agreement_type,phase,
@@ -62,7 +46,7 @@ class Extract_Transform_Load:
                         FROM (
                             SELECT
                                 lease_id,
-                                ST_Multi(ST_CollectionExtract(ST_Union(geom), 3)) AS geom,
+                                ST_Multi(ST_CollectionExtract(ST_Union(ST_MakeValid(geom)), 3)) AS geom,
                                 MAX(geom_status) AS geom_status,
                                 MAX(lease_status) AS lease_status,
                                 MAX(agreement_type) AS agreement_type,
@@ -82,7 +66,7 @@ class Extract_Transform_Load:
                         FROM (
                             SELECT
                                 lease_id,
-                                ST_Multi(ST_CollectionExtract(ST_Union(geom), 3)) AS geom,
+                                ST_Multi(ST_CollectionExtract(ST_Union(ST_MakeValid(geom)), 3)) AS geom,
                                 MAX(geom_status) AS geom_status,
                                 MAX(lease_status) AS lease_status,
                                 MIN(CASE WHEN year_leased::TEXT ~ '^\\d+$' THEN year_leased::TEXT::INTEGER END) AS year_leased,
@@ -92,10 +76,10 @@ class Extract_Transform_Load:
                         ) sub;
                     """
 
-            source_data = DataManagement.execute_spatial_query(
-                conn=source_conn,
-                query=query,
-            )
+                source_data = DataManagement.execute_spatial_query(
+                    conn=source_conn,
+                    query=query,
+                )
 
             if source_data.empty:
                 print("No data found")
@@ -143,7 +127,7 @@ class Extract_Transform_Load:
                 FROM (
                     SELECT
                         compartment_id,
-                        ST_Multi(ST_CollectionExtract(ST_Union(geom), 3)) AS geom,
+                        ST_Multi(ST_CollectionExtract(ST_Union(ST_MakeValid(geom)), 3)) AS geom,
                         MAX(lease_id) AS lease_id,
                         MAX(n_psp_target) AS n_psp_target,
                         MIN(CASE WHEN year_created::TEXT ~ '^\\d+$' THEN year_created::TEXT::INTEGER END) AS year_created
@@ -422,8 +406,8 @@ class Extract_Transform_Load:
             subcomp_query = f"""
                 SELECT
                   subcompartment_id,
-                  ST_Multi(ST_CollectionExtract(ST_Union(geom), 3)) as geom,
-                  ROUND((ST_Area(ST_Transform(ST_Multi(ST_CollectionExtract(ST_Union(geom), 3)), 4326)::geography) / 10000.0)::numeric, 2) AS area_ha,
+                  ST_Multi(ST_CollectionExtract(ST_Union(ST_MakeValid(geom)), 3)) as geom,
+                  ROUND((ST_Area(ST_Transform(ST_Multi(ST_CollectionExtract(ST_Union(ST_MakeValid(geom)), 3)), 4326)::geography) / 10000.0)::numeric, 2) AS area_ha,
                   MAX(compartment_id) AS compartment_id,
                   MAX(treatment_type) AS treatment_type,
                   MAX(sph) AS sph,
